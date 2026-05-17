@@ -1,0 +1,42 @@
+# poster-a0.style.toml
+#
+# Single-page A0 poster (841 × 1189 mm). Lecture-hall / large-display
+# scale — meant to be readable from 4-6 m. Sized so a single line of
+# body text is visible across a room; titles command attention from
+# the back row.
+
+page_width  = 2384.0    # A0 portrait, 72 dpi
+page_height = 3370.0
+margin_x    = 250.0
+margin_y    = 250.0
+
+body_font_size      = 44.0
+body_line_height    = 1.45
+paragraph_space_after = 32.0
+
+[heading.h1]
+font_size = 156.0
+space_before = 60.0
+space_after  = 44.0
+
+[heading.h2]
+font_size = 100.0
+space_before = 48.0
+space_after  = 32.0
+
+[heading.h3]
+font_size = 64.0
+space_before = 32.0
+space_after  = 22.0
+
+[hyphenation]
+enabled = true
+
+[frontpage]
+enabled = true
+top_margin = 680.0
+title_font_size = 280.0
+subtitle = "{description}"
+subtitle_font_size = 76.0
+authors_font_size = 52.0
+date_font_size = 40.0

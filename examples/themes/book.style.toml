@@ -1,0 +1,35 @@
+# book.style.toml
+#
+# Book-style layout: smaller body font, asymmetric (verso/recto)
+# headers — chapter title on recto (odd pages), document title on
+# verso (even pages). ToC at the start; hyphenation on. The first
+# page (cover) renders without decoration.
+
+page_width  = 432.0   # 6 in
+page_height = 648.0   # 9 in
+margin_x    = 56.0
+margin_y    = 64.0
+
+body_font_size      = 10.0
+body_line_height    = 1.45
+paragraph_space_after = 6.0
+
+[hyphenation]
+enabled = true
+
+[toc]
+enabled = true
+position = "start"
+
+[page_decoration]
+skip_first_page = true
+
+[page_decoration.header]
+center = "{chapter}"
+rule = false
+
+[page_decoration.header.even]
+center = "{title}"
+
+[page_decoration.footer]
+center = "{page}"

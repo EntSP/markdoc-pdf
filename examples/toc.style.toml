@@ -1,0 +1,5 @@
+[toc]
+enabled = true
+position = "start"
+title = "Table of Contents"
+max_depth = 3

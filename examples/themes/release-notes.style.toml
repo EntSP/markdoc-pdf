@@ -1,0 +1,32 @@
+# release-notes.style.toml
+#
+# Compact, dense layout for changelogs and release notes. No ToC,
+# no front page, tighter line-height. Each version heading sits at
+# the top of the page when paginated, with the build date in the
+# footer corner.
+
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 64.0
+margin_y    = 56.0
+
+body_font_size      = 10.0
+body_line_height    = 1.35
+paragraph_space_after = 5.0
+list_item_space_after = 2.0
+
+# Tight code blocks for command-line examples in changelogs.
+code_font_size = 9.5
+code_padding   = 8.0
+
+[hyphenation]
+enabled = true
+
+[page_decoration.header]
+left = "{title}"
+right = "v{chapter}"     # h1 names the version
+
+[page_decoration.footer]
+left = "{date}"
+right = "{page} / {total}"
+rule = false

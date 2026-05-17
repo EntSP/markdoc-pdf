@@ -1,0 +1,42 @@
+# poster-a2.style.toml
+#
+# Single-page A2 poster (420 × 594 mm). Conference-board scale —
+# meant to be readable from 2-3 m. Same layout philosophy as
+# poster-a3 but everything sized up to match the larger canvas
+# (margins, body text, title slab).
+
+page_width  = 1191.0    # A2 portrait, 72 dpi
+page_height = 1684.0
+margin_x    = 130.0
+margin_y    = 130.0
+
+body_font_size      = 24.0
+body_line_height    = 1.45
+paragraph_space_after = 18.0
+
+[heading.h1]
+font_size = 80.0
+space_before = 32.0
+space_after  = 24.0
+
+[heading.h2]
+font_size = 50.0
+space_before = 26.0
+space_after  = 16.0
+
+[heading.h3]
+font_size = 32.0
+space_before = 18.0
+space_after  = 12.0
+
+[hyphenation]
+enabled = true
+
+[frontpage]
+enabled = true
+top_margin = 340.0
+title_font_size = 144.0
+subtitle = "{description}"
+subtitle_font_size = 40.0
+authors_font_size = 28.0
+date_font_size = 22.0

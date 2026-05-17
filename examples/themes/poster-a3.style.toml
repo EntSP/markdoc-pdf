@@ -1,0 +1,46 @@
+# poster-a3.style.toml
+#
+# Single-page A3 poster (297 × 420 mm). Sized for waist-to-eye-level
+# reading on a wall — body text scales up so it stays legible from
+# ~1.5 m away. Title block centred via the synthesised front page;
+# generous outer margins give the design room to breathe.
+#
+# Drop a logo at `frontpage.logo.src` and the renderer will centre
+# it above the title. No header, no footer, no page numbers — a
+# poster is one page by definition.
+
+page_width  = 842.0    # A3 portrait, 72 dpi
+page_height = 1191.0
+margin_x    = 90.0
+margin_y    = 90.0
+
+body_font_size      = 18.0
+body_line_height    = 1.45
+paragraph_space_after = 14.0
+
+[heading.h1]
+font_size = 56.0
+space_before = 24.0
+space_after  = 18.0
+
+[heading.h2]
+font_size = 36.0
+space_before = 20.0
+space_after  = 12.0
+
+[heading.h3]
+font_size = 24.0
+space_before = 14.0
+space_after  = 10.0
+
+[hyphenation]
+enabled = true
+
+[frontpage]
+enabled = true
+top_margin = 240.0
+title_font_size = 96.0
+subtitle = "{description}"
+subtitle_font_size = 28.0
+authors_font_size = 20.0
+date_font_size = 18.0

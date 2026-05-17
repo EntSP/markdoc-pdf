@@ -1,0 +1,28 @@
+# academic-paper.style.toml
+#
+# US Letter, narrow margins, body 11pt with looser leading. Footnotes
+# render in the per-page pool. No headers/footers — page numbers go in
+# the footer slot only. Hyphenation enabled for clean justified-feel
+# wrapping.
+
+page_width  = 612.0   # 8.5 in
+page_height = 792.0   # 11 in
+margin_x    = 72.0
+margin_y    = 72.0
+
+body_font_size      = 11.0
+body_line_height    = 1.6
+paragraph_space_after = 6.0
+
+caption_position    = "below"
+
+[hyphenation]
+enabled = true
+
+[footnote]
+font_size = 9.0
+gap_above = 18.0
+rule_width_frac = 0.25
+
+[page_decoration.footer]
+center = "{page}"

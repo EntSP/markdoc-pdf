@@ -1,0 +1,42 @@
+# poster-a1.style.toml
+#
+# Single-page A1 poster (594 × 841 mm). Conference / poster-session
+# scale — meant to be readable from 3-4 m. Same layout philosophy as
+# the smaller poster themes; everything sized up to match the larger
+# canvas.
+
+page_width  = 1684.0    # A1 portrait, 72 dpi
+page_height = 2384.0
+margin_x    = 180.0
+margin_y    = 180.0
+
+body_font_size      = 32.0
+body_line_height    = 1.45
+paragraph_space_after = 24.0
+
+[heading.h1]
+font_size = 112.0
+space_before = 44.0
+space_after  = 32.0
+
+[heading.h2]
+font_size = 70.0
+space_before = 36.0
+space_after  = 22.0
+
+[heading.h3]
+font_size = 44.0
+space_before = 24.0
+space_after  = 16.0
+
+[hyphenation]
+enabled = true
+
+[frontpage]
+enabled = true
+top_margin = 480.0
+title_font_size = 200.0
+subtitle = "{description}"
+subtitle_font_size = 56.0
+authors_font_size = 38.0
+date_font_size = 30.0

@@ -1,0 +1,45 @@
+# technical-manual.style.toml
+#
+# A4 manual layout with ToC, List of Figures, List of Tables at the
+# start, page numbers in the footer, and chapter/section breadcrumbs
+# in the header. English hyphenation is on so wrapped lines stay tight.
+
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 64.0
+margin_y    = 72.0
+
+body_font_size      = 10.5
+body_line_height    = 1.45
+paragraph_space_after = 8.0
+
+figure_caption_prefix = "Figure"
+table_caption_prefix  = "Table"
+caption_separator     = "."
+caption_position      = "below"
+
+[hyphenation]
+enabled = true
+language = "en-us"
+
+[toc]
+enabled = true
+position = "start"
+title = "Contents"
+
+[lof]
+enabled = true
+position = "start"
+
+[lot]
+enabled = true
+position = "start"
+
+[page_decoration.header]
+left = "{chapter}"
+right = "{section}"
+rule = true
+
+[page_decoration.footer]
+center = "{page} / {total}"
+rule = true

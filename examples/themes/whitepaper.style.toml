@@ -1,0 +1,43 @@
+# whitepaper.style.toml
+#
+# Commercial whitepaper / position paper layout. A4 with generous
+# margins, large title page driven by frontmatter, ToC at the start,
+# subdued footer with page numbers and the document title, soft
+# hyphenation for justified-feel wrapping. Suitable for sales-led
+# explainers, internal positioning docs, etc.
+
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 80.0
+margin_y    = 80.0
+
+body_font_size      = 11.0
+body_line_height    = 1.55
+paragraph_space_after = 9.0
+
+[hyphenation]
+enabled = true
+
+[toc]
+enabled = true
+position = "start"
+title = "Contents"
+
+[frontpage]
+enabled = true
+top_margin = 220.0
+title_font_size = 40.0
+subtitle = "{description}"
+subtitle_font_size = 16.0
+authors_font_size = 13.0
+
+[page_decoration]
+skip_first_page = true
+
+[page_decoration.header]
+left = "{title}"
+
+[page_decoration.footer]
+center = "{page} / {total}"
+rule = true
+rule_thickness = 0.5

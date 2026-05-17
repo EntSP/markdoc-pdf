@@ -1,0 +1,12 @@
+[toc]
+enabled = true
+position = "start"
+max_depth = 3
+
+[lof]
+enabled = true
+position = "start"
+
+[lot]
+enabled = true
+position = "start"

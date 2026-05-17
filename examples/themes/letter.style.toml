@@ -1,0 +1,14 @@
+# letter.style.toml
+#
+# Single-page letter / memo layout. No headers, no footers, generous
+# body line-height for easy reading. Useful for short correspondence,
+# release notes, internal memos.
+
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 80.0
+margin_y    = 90.0
+
+body_font_size      = 11.5
+body_line_height    = 1.7
+paragraph_space_after = 10.0

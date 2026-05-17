@@ -1,0 +1,32 @@
+# cheatsheet.style.toml
+#
+# Landscape A4, narrow margins, dense body. Designed for one-page
+# quick references — keyboard-shortcut tables, CLI command summaries,
+# API method lists. No headers, no footers, no front page; every
+# pixel goes to content.
+#
+# Multi-column layout is not yet supported by the renderer; this
+# theme just makes the most of a wide page so list-heavy content
+# breathes.
+
+page_width  = 842.0   # A4 landscape
+page_height = 595.0
+margin_x    = 36.0
+margin_y    = 36.0
+
+body_font_size      = 9.5
+body_line_height    = 1.3
+paragraph_space_after = 4.0
+list_item_space_after = 1.5
+list_indent           = 16.0
+
+# Compact tables — typical for shortcut / command references.
+table_cell_padding         = 4.0
+table_border_thickness     = 0.4
+table_space_after          = 6.0
+
+# Slightly tighter code samples than the default.
+code_font_size = 9.0
+code_padding   = 6.0
+
+# No decorations — every mm matters.

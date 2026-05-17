@@ -1,0 +1,26 @@
+# Letter-paper override style for markdoc-pdf.
+# Demonstrates partial-override: only specified fields change; everything
+# else inherits from the built-in default.
+
+page_width = 612.0
+page_height = 792.0
+margin_x = 54.0
+margin_y = 54.0
+body_font_size = 12.0
+
+[heading.h1]
+font_size = 30.0
+
+[page_decoration.header]
+left = "{title}"
+right = "{chapter}"
+rule = true
+
+[page_decoration.footer]
+center = "Page {page} of {total}"
+rule = true
+
+[callout_styles.warning]
+background = { r = 255, g = 230, b = 200 }
+border     = { r = 230, g = 150, b =  60 }
+accent     = { r = 200, g = 100, b =  20 }

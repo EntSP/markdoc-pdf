@@ -1,0 +1,41 @@
+# draft-report.style.toml
+#
+# Internal-review report layout with a "DRAFT" diagonal watermark on
+# every page. ToC at the start; subdued footer with build date and
+# page numbers. Tagged PDF/UA-1 export so the result is accessible.
+
+pdf_export = "u_a1"
+
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 60.0
+margin_y    = 72.0
+
+body_font_size = 10.5
+
+[hyphenation]
+enabled = true
+
+[toc]
+enabled = true
+position = "start"
+
+[watermark]
+opacity = 0.12
+skip_first_page = true
+
+[watermark.kind]
+type = "text"
+text = "DRAFT"
+font_size = 110.0
+color = { r = 200, g = 60, b = 60 }
+rotation_deg = -30.0
+
+[page_decoration.header]
+left = "{chapter}"
+right = "{section}"
+
+[page_decoration.footer]
+left = "{date}"
+right = "Page {page} of {total}"
+rule = true

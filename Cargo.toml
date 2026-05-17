@@ -1,0 +1,37 @@
+[package]
+name = "markdoc-pdf"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/entsp/markdoc"
+
+[lib]
+name = "markdoc_pdf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "markdoc-pdf"
+path = "src/main.rs"
+
+[dependencies]
+markdoc    = { path = "../markdoc" }
+flux-types = { path = "../flux-types" }
+
+# PDF / layout stack — these used to be `*.workspace = true` against
+# the markdoc workspace. Now standalone: pin the same versions
+# inline. Keep these in lockstep with leptos-markdoc when shared.
+krilla     = "0.7"
+krilla-svg = "0.7"
+parley     = "0.8"
+usvg       = "0.45"
+fontdb     = "0.23"
+image      = "0.25"
+
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml       = "0.8"
+clap       = { version = "4.5", features = ["derive"] }
+thiserror  = "1.0"
+time       = { version = "0.3", default-features = false, features = ["std", "local-offset", "parsing", "macros"] }
+ureq       = { version = "2", default-features = false, features = ["tls"] }
+hyphenation = { version = "0.8", default-features = false, features = ["embed_en-us"] }

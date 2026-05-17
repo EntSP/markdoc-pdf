@@ -1,0 +1,11 @@
+figure_caption_prefix = "Fig."
+table_caption_prefix = "Tab."
+caption_separator = " —"
+
+[lof]
+enabled = true
+position = "start"
+
+[lot]
+enabled = true
+position = "start"

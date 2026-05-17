@@ -1,0 +1,128 @@
+# Release workflow for markdoc-pdf
+#
+# Triggered by pushing a tag `v*` (e.g. `v0.2.0`). Builds release
+# binaries for Linux x86_64, macOS aarch64 and Windows x86_64,
+# uploads them as a GitHub release, and attaches the theme catalogue
+# alongside so writers can grab a one-stop bundle.
+#
+# Like CI, each job checks out the sibling crates (`markdoc`,
+# `flux-types`) next to `markdoc-pdf` so the relative `path = "../…"`
+# dependencies resolve.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # needed for the release-creating step
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: markdoc-pdf
+            asset:    markdoc-pdf-linux-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: markdoc-pdf
+            asset:    markdoc-pdf-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: markdoc-pdf.exe
+            asset:    markdoc-pdf-windows-x86_64.exe
+    steps:
+      - name: Check out markdoc-pdf
+        uses: actions/checkout@v4
+        with:
+          path: markdoc-pdf
+
+      - name: Check out sibling — markdoc
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/markdoc
+          path: markdoc
+
+      - name: Check out sibling — flux-types
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/flux-types
+          path: flux-types
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: markdoc-pdf
+          key: release-${{ matrix.target }}
+
+      - name: Build release
+        working-directory: markdoc-pdf
+        run: cargo build --release --target ${{ matrix.target }} --bin markdoc-pdf
+
+      - name: Stage artifact
+        shell: bash
+        working-directory: markdoc-pdf
+        run: |
+          mkdir -p ../staging
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact }} ../staging/${{ matrix.asset }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: staging/${{ matrix.asset }}
+          if-no-files-found: error
+
+  themes:
+    name: Bundle theme catalogue
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bundle themes
+        run: |
+          mkdir -p staging
+          tar czf staging/themes.tar.gz -C examples themes
+          (cd examples && zip -r ../staging/themes.zip themes)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: themes
+          path: staging/themes.*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [build, themes]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Show what we collected
+        run: ls -lh artifacts
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

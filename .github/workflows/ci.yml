@@ -1,0 +1,94 @@
+# CI for markdoc-pdf
+#
+# Runs fmt, clippy, tests and a release build on every push and PR
+# against `main`. The crate depends on sibling crates `markdoc` and
+# `flux-types` via relative paths (`path = "../markdoc"`), so each
+# job checks out all three repos side-by-side under a parent dir
+# before running cargo from inside `markdoc-pdf/`.
+#
+# Sibling repos are assumed to live in the same GitHub owner as this
+# repo (the `${{ github.repository_owner }}` substitution). Override
+# the owner per-environment by editing the `repository:` lines if
+# you fork into a different org.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Check out markdoc-pdf
+        uses: actions/checkout@v4
+        with:
+          path: markdoc-pdf
+
+      - name: Check out sibling — markdoc
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/markdoc
+          path: markdoc
+
+      - name: Check out sibling — flux-types
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/flux-types
+          path: flux-types
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: markdoc-pdf
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo fmt --check
+        working-directory: markdoc-pdf
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        working-directory: markdoc-pdf
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: markdoc-pdf
+        run: cargo test --all-targets
+
+      - name: cargo build --release
+        working-directory: markdoc-pdf
+        run: cargo build --release --bin markdoc-pdf
+
+      - name: Smoke-test the binary
+        working-directory: markdoc-pdf
+        shell: bash
+        run: |
+          ./target/release/markdoc-pdf \
+              --input examples/rich.mdoc \
+              --output rich.pdf \
+              --style examples/themes/letter.style.toml \
+              --assets-root examples
+          test -s rich.pdf

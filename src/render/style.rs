@@ -244,6 +244,11 @@ pub struct Style {
     pub body_line_height: f32,
     pub paragraph_space_after: f32,
     pub text_color: ColorRgb,
+    /// Colour applied to the text of `[text](url)` links inside a
+    /// paragraph. The PDF link annotation is created regardless; this
+    /// is purely the visual cue so a reader spots the link before they
+    /// hover over it.
+    pub link_color: ColorRgb,
 
     // ── Headings ──────────────────────────────────────────────────────
     pub heading: HeadingStyles,
@@ -359,6 +364,7 @@ impl Default for Style {
             body_line_height: 1.5,
             paragraph_space_after: 8.0,
             text_color: ColorRgb::new(20, 20, 20),
+            link_color: ColorRgb::new(20, 95, 175),
             heading: HeadingStyles::default(),
             list_indent: 24.0,
             list_item_space_after: 4.0,

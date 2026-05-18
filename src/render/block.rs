@@ -13,7 +13,7 @@ use usvg::Tree as SvgTree;
 
 use crate::assets::{AssetResolver, MediaFormat, NullAssetResolver, sniff_format};
 
-use super::inline::{Inlines, LinkRange, MidAnchor, collect_inlines};
+use super::inline::{InlineProp, InlineRange, Inlines, LinkRange, MidAnchor, collect_inlines};
 use super::paginate::paginate as paginate_blocks;
 use super::style::Style;
 use super::style::TableColumnSizing;
@@ -1157,6 +1157,19 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
     let mut inlines = Inlines::from(&text_children, &mut ctx.footnotes);
     if inlines.text.trim().is_empty() {
         return out;
+    }
+    // Tint link text so readers spot it before they hover. The PDF
+    // annotation is already created from `inlines.links`; this just
+    // colours the underlying glyphs. Done before hyphenation: links
+    // pin the byte ranges anyway, so the soft-hyphen guard below
+    // already skips paragraphs that contain any link.
+    let link_color: krilla::color::rgb::Color = ctx.style.link_color.into();
+    for link in &inlines.links {
+        inlines.style_ranges.push(InlineRange {
+            start: link.start,
+            end: link.end,
+            prop: InlineProp::Color(link_color),
+        });
     }
     // Hyphenate plain paragraphs only — inline ranges, links, anchors
     // and footnote calls all key on byte offsets, and inserting soft

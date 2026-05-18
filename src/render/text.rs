@@ -45,10 +45,30 @@ pub fn measure_first_line_width(
 }
 
 pub fn default_families() -> &'static [&'static str] {
+    // parley walks this list per codepoint and uses the first family
+    // whose glyph table covers it. Order is by likelihood / coverage:
+    // primary text first, then script-specific Noto families, then
+    // symbol/math fallbacks, then broad cross-platform Unicode fonts
+    // for anything else (arrows, mathematical operators, …), and
+    // emoji at the tail.
     &[
         "Noto Sans",
         "Noto Sans Arabic",
         "Noto Sans Devanagari",
+        // Arrow / mathematical-operator glyphs. Bundled on most Linux
+        // distros via `google-noto-sans-symbols2-fonts` / `-math-`;
+        // ignored on systems where they're absent (fontique just
+        // skips families it can't find).
+        "Noto Sans Symbols 2",
+        "Noto Sans Math",
+        // Broad cross-platform sans-serif fallbacks. At least one of
+        // these is installed by default on Fedora / Debian / Ubuntu
+        // (DejaVu, Liberation Sans), macOS / older Windows (Arial
+        // Unicode MS), and modern Windows (Segoe UI Symbol).
+        "DejaVu Sans",
+        "Liberation Sans",
+        "Arial Unicode MS",
+        "Segoe UI Symbol",
         "Noto Color Emoji",
     ]
 }

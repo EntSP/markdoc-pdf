@@ -15,11 +15,11 @@ name: Release
 on:
   push:
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+"     # stable:      0.2.0
-      - "[0-9]+.[0-9]+.[0-9]+-*"   # pre-release: 0.2.0-rc1, 0.2.0-beta.3
+      - "[0-9]+.[0-9]+.[0-9]+" # stable:      0.2.0
+      - "[0-9]+.[0-9]+.[0-9]+-*" # pre-release: 0.2.0-rc1, 0.2.0-beta.3
 
 permissions:
-  contents: write   # needed for the release-creating step
+  contents: write # needed for the release-creating step
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,15 +35,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: markdoc-pdf
-            asset:    markdoc-pdf-linux-x86_64
+            asset: markdoc-pdf-linux-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: markdoc-pdf
-            asset:    markdoc-pdf-macos-aarch64
+            asset: markdoc-pdf-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: markdoc-pdf.exe
-            asset:    markdoc-pdf-windows-x86_64.exe
+            asset: markdoc-pdf-windows-x86_64.exe
     steps:
       - name: Check out markdoc-pdf
         uses: actions/checkout@v4
@@ -66,6 +66,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fontconfig libfontconfig1-dev
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2

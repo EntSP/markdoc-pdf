@@ -1,0 +1,57 @@
+# copyright-footer.style.toml
+#
+# Showcase theme for a three-slot copyright / legal footer. A4 body with
+# light defaults; everything interesting is in the `[page_decoration.footer]`
+# section below. Adapt by editing the three template strings (`left`,
+# `center`, `right`) — leave the rest as-is.
+#
+# Slot layout (left-aligned / centred / right-aligned within the page's
+# inner width):
+#
+#   ┌─────────────────────────────── footer rule ────────────────────────┐
+#   │ © 2026 Acme Corp.       Confidential — {title}        Page {page}  │
+#   └────────────────────────────────────────────────────────────────────┘
+#
+# Notes:
+# - {page}, {total}, {title}, {chapter}, {section}, {date} are
+#   substituted at render time. The copyright year is hardcoded — there
+#   is intentionally no {year} placeholder, so legal text stays
+#   reproducible across re-renders of the same release.
+# - `skip_first_page = false` because copyright/confidentiality notices
+#   typically appear on every page including the cover. Flip to `true`
+#   if you have a cover page that already carries its own legal block.
+# - `max_lines = 2` reserves vertical space for the centre slot to wrap
+#   on documents with long titles without colliding with the body.
+
+page_width  = 595.0     # A4
+page_height = 842.0
+margin_x    = 72.0
+margin_y    = 72.0
+
+body_font_size        = 11.0
+body_line_height      = 1.45
+paragraph_space_after = 8.0
+
+[hyphenation]
+enabled = true
+
+[page_decoration]
+skip_first_page = false
+
+[page_decoration.footer]
+# ── three slots, all in use ─────────────────────────────────────────
+left   = "© 2026 Acme Corp. All rights reserved."
+center = "Confidential — {title}"
+right  = "Page {page} of {total}"
+
+# ── visual treatment ────────────────────────────────────────────────
+font_size        = 8.5
+color            = { r = 90, g = 90, b = 100 }   # cool grey
+margin_from_edge = 28.0
+max_lines        = 2
+
+# Hairline rule above the footer to separate it from the body.
+rule           = true
+rule_color     = { r = 180, g = 180, b = 190 }
+rule_thickness = 0.4
+rule_gap       = 6.0

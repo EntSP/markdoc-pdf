@@ -1,0 +1,85 @@
+# Examples
+
+Two kinds of things live here:
+
+- **Single-feature style demos** — tiny `.style.toml` files that
+  illustrate one knob at a time (`small`, `pdfa`, `toc`, …). Useful
+  as copy-paste starting points when authoring a real theme.
+- **Source fixtures** — `rich.mdoc` and the assets it references.
+  Used by the CI smoke-test and by everything below as the input
+  document.
+
+Ready-to-deploy themes (manuals, papers, posters, …) live one
+directory deeper in [`themes/`](themes/README.md) — start there if
+you want a finished look rather than a feature reference.
+
+## Quick render
+
+From the `markdoc-pdf/` directory after building the binary
+(`cargo build --release`):
+
+```sh
+./target/release/markdoc-pdf \
+    --input  examples/rich.mdoc \
+    --output rich.pdf \
+    --style  examples/themes/technical-manual.style.toml \
+    --assets-root examples
+```
+
+Swap `--style` for any of the files below to see a single feature in
+isolation.
+
+## Style demos
+
+Every file in `examples/*.style.toml` is a *partial* style — it only
+sets the fields it cares about; everything else inherits from the
+built-in default (A4, Noto Sans, no decoration). That makes them
+small and readable.
+
+| File | Demonstrates |
+|------|--------------|
+| `small.style.toml` | Tiny page height (300 pt). Forces pagination on `rich.mdoc`. |
+| `letter.style.toml` | US Letter geometry, header / footer with template variables, custom callout colours. The most complete "real-world" example. |
+| `toc.style.toml` | Just a table of contents at the start. |
+| `full-toc.style.toml` | ToC + List of Figures + List of Tables — three front-matter sections. |
+| `abbrev.style.toml` | Abbreviated caption prefixes (`Fig.` / `Tab.`) plus LoF and LoT. |
+| `below.style.toml` | Caption positioned **below** the figure / table instead of above. |
+| `copyright-footer.style.toml` | Three-slot footer (copyright left, confidentiality + title centre, page-of-total right). Reference for footer authoring. |
+| `pdfa.style.toml` | One-liner: `pdf_export = "a2_b"`. Switches to PDF/A-2B output. |
+| `ua1.style.toml` | One-liner: `pdf_export = "u_a1"`. Switches to PDF/UA-1 (accessibility) output. |
+
+## Source fixture
+
+`rich.mdoc` exercises most rendering paths in a single document:
+headings, lists (ordered and unordered), block quotes, code with
+syntax highlighting, callouts (info / warning / danger), inline and
+block media (PNG + SVG + a deliberately-missing reference to test the
+placeholder), a wide table, cross-references with `{% tagref %}`, and
+a long-paragraph tail that forces pagination.
+
+Its frontmatter is intentionally minimal (just `title:`) so style
+demos drive the visual output rather than metadata.
+
+The referenced assets:
+
+| File | Used for |
+|------|----------|
+| `swatch.png` | Raster image referenced via `![…](swatch.png)`. |
+| `swatch.svg` | SVG referenced via `{% media src="swatch.svg" /%}`. |
+
+Pass `--assets-root examples` so the renderer resolves these relative
+to this directory.
+
+## Architecture spike
+
+`parley_krilla_spike.rs` is **not** a markdoc-pdf demo — it's a
+standalone end-to-end test that proves parley (text shaping) and
+krilla (PDF emit) can be wired together at all. Useful when bumping
+either dependency. Run with:
+
+```sh
+cargo run --example parley_krilla_spike
+```
+
+If it writes a readable `spike.pdf` with both the paragraph and the
+SVG callout, the rendering substrate is healthy.

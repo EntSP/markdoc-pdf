@@ -129,7 +129,7 @@ pub fn build_layout(
 
     let mut layout = builder.build(text);
     layout.break_all_lines(Some(max_advance));
-    layout.align(Some(max_advance), Alignment::Start, Default::default());
+    layout.align(Alignment::Start, Default::default());
     layout
 }
 
@@ -146,7 +146,7 @@ pub fn build_layout_aligned(
     layout_cx: &mut LayoutContext<rgb::Color>,
 ) -> Layout<rgb::Color> {
     let mut layout = build_layout(text, ranges, style, max_advance, font_cx, layout_cx);
-    layout.align(Some(max_advance), alignment, Default::default());
+    layout.align(alignment, Default::default());
     layout
 }
 

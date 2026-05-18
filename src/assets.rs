@@ -102,9 +102,10 @@ pub struct HttpAssetResolver {
 
 impl HttpAssetResolver {
     pub fn new() -> Self {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(std::time::Duration::from_secs(10))
-            .build();
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(10)))
+            .build()
+            .into();
         Self {
             agent,
             max_body_bytes: 64 * 1024 * 1024,
@@ -136,13 +137,16 @@ impl AssetResolver for HttpAssetResolver {
             let scheme = uri.split("://").next().unwrap_or("?").to_string();
             return Err(AssetError::UnsupportedScheme { scheme });
         }
-        let resp = self
+        let mut resp = self
             .agent
             .get(uri)
             .call()
             .map_err(|e| AssetError::Other(format!("HTTP fetch {uri}: {e}")))?;
         let mut buf: Vec<u8> = Vec::new();
-        let mut reader = resp.into_reader().take(self.max_body_bytes as u64 + 1);
+        let mut reader = resp
+            .body_mut()
+            .as_reader()
+            .take(self.max_body_bytes as u64 + 1);
         std::io::copy(&mut reader, &mut buf).map_err(|e| AssetError::Io {
             uri: uri.to_string(),
             source: e,
@@ -179,9 +183,10 @@ impl ArcaAssetResolver {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             subject_id,
-            agent: ureq::AgentBuilder::new()
-                .timeout(std::time::Duration::from_secs(10))
-                .build(),
+            agent: ureq::Agent::config_builder()
+                .timeout_global(Some(std::time::Duration::from_secs(10)))
+                .build()
+                .into(),
             max_body_bytes: 64 * 1024 * 1024,
         }
     }
@@ -210,13 +215,16 @@ impl AssetResolver for ArcaAssetResolver {
             .ok_or_else(|| AssetError::NotFound(uri.to_string()))?;
         let mut req = self.agent.get(&url);
         if let Some(sid) = &self.subject_id {
-            req = req.set("X-Subject-Id", sid);
+            req = req.header("X-Subject-Id", sid);
         }
-        let resp = req
+        let mut resp = req
             .call()
             .map_err(|e| AssetError::Other(format!("Arca fetch {url}: {e}")))?;
         let mut buf: Vec<u8> = Vec::new();
-        let mut reader = resp.into_reader().take(self.max_body_bytes as u64 + 1);
+        let mut reader = resp
+            .body_mut()
+            .as_reader()
+            .take(self.max_body_bytes as u64 + 1);
         std::io::copy(&mut reader, &mut buf).map_err(|e| AssetError::Io {
             uri: uri.to_string(),
             source: e,

@@ -88,7 +88,7 @@ fn build_pdf() -> Vec<u8> {
 
     let mut layout = builder.build(&text);
     layout.break_all_lines(max_advance);
-    layout.align(max_advance, Alignment::Start, Default::default());
+    layout.align(Alignment::Start, Default::default());
 
     // 2. Open a krilla document with one A4 page.
     let mut document = Document::new();

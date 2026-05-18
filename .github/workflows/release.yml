@@ -1,9 +1,10 @@
 # Release workflow for markdoc-pdf
 #
-# Triggered by pushing a tag `v*` (e.g. `v0.2.0`). Builds release
-# binaries for Linux x86_64, macOS aarch64 and Windows x86_64,
-# uploads them as a GitHub release, and attaches the theme catalogue
-# alongside so writers can grab a one-stop bundle.
+# Triggered by pushing a SemVer tag without a `v` prefix (e.g. `0.2.0`
+# or `0.2.0-rc1`). Builds release binaries for Linux x86_64, macOS
+# aarch64 and Windows x86_64, uploads them as a GitHub release, and
+# attaches the theme catalogue alongside so writers can grab a
+# one-stop bundle.
 #
 # Like CI, each job checks out the sibling crates (`markdoc`,
 # `flux-types`) next to `markdoc-pdf` so the relative `path = "../…"`
@@ -13,7 +14,9 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"     # stable:      0.2.0
+      - "[0-9]+.[0-9]+.[0-9]+-*"   # pre-release: 0.2.0-rc1, 0.2.0-beta.3
 
 permissions:
   contents: write   # needed for the release-creating step

@@ -1,7 +1,7 @@
 # release-notes.style.toml
 #
 # Compact, dense layout for changelogs and release notes. No ToC,
-# no front page, tighter line-height. Each version heading sits at
+# no cover page, tighter line-height. Each version heading sits at
 # the top of the page when paginated, with the build date in the
 # footer corner.
 

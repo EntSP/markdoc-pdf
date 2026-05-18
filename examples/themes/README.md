@@ -35,21 +35,21 @@ override what you want. Every section is documented in
 - `[hyphenation]` to insert soft hyphens (English-US bundled)
 - `font_paths = [...]` to load extra `.ttf`/`.otf` families
 - `body_font_families = ["My Custom Family", "fallback"]`
-- `[frontpage]` to synthesise a cover/title page from frontmatter
+- `[coverpage]` to synthesise a cover page from frontmatter
 
-## Front pages
+## Cover pages
 
 Source `.mdoc` documents stay output-agnostic — they don't include a
 title-page tag. Instead, enable a synthesised cover page in the style:
 
 ```toml
-[frontpage]
+[coverpage]
 enabled = true
 top_margin = 180
 title_font_size = 36
 subtitle = "{description}"   # template — `{title}`, `{description}`, `{date}`
 
-[frontpage.logo]
+[coverpage.logo]
 src = "logo.svg"             # any AssetResolver URI
 width = 200
 height = 80

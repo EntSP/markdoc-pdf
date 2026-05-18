@@ -23,7 +23,7 @@ enabled = true
 position = "start"
 title = "Contents"
 
-[frontpage]
+[coverpage]
 enabled = true
 top_margin = 220.0
 title_font_size = 40.0

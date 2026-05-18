@@ -32,7 +32,7 @@ space_after  = 22.0
 [hyphenation]
 enabled = true
 
-[frontpage]
+[coverpage]
 enabled = true
 top_margin = 680.0
 title_font_size = 280.0

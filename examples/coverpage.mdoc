@@ -1,0 +1,32 @@
+---
+title: Field Guide to the Acme Robots
+description: A practical introduction for service technicians and operators
+authors:
+  - Mira Solovay
+  - Tomás del Río
+  - Hana Ueda
+firstReleaseDate: "2026-05-18"
+---
+
+# Introduction
+
+This is the body content. The interesting part of this fixture is the
+**synthesised cover page** that renders before it — see
+[`coverpage.style.toml`](coverpage.style.toml) for the configuration.
+
+Render with:
+
+```sh
+markdoc-pdf \
+    --input  examples/coverpage.mdoc \
+    --output coverpage.pdf \
+    --style  examples/coverpage.style.toml \
+    --assets-root examples
+```
+
+Frontmatter fields that feed the cover page:
+
+- `title` → the big H1 at the top of page 1
+- `description` → the subtitle template (`{description}` resolves to it)
+- `authors` → the joined authors line
+- `firstReleaseDate` → the publication-date line

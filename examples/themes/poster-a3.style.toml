@@ -2,10 +2,10 @@
 #
 # Single-page A3 poster (297 × 420 mm). Sized for waist-to-eye-level
 # reading on a wall — body text scales up so it stays legible from
-# ~1.5 m away. Title block centred via the synthesised front page;
+# ~1.5 m away. Title block centred via the synthesised cover page;
 # generous outer margins give the design room to breathe.
 #
-# Drop a logo at `frontpage.logo.src` and the renderer will centre
+# Drop a logo at `coverpage.logo.src` and the renderer will centre
 # it above the title. No header, no footer, no page numbers — a
 # poster is one page by definition.
 
@@ -36,7 +36,7 @@ space_after  = 10.0
 [hyphenation]
 enabled = true
 
-[frontpage]
+[coverpage]
 enabled = true
 top_margin = 240.0
 title_font_size = 96.0

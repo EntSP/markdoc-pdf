@@ -2,7 +2,7 @@
 #
 # Landscape A4, narrow margins, dense body. Designed for one-page
 # quick references — keyboard-shortcut tables, CLI command summaries,
-# API method lists. No headers, no footers, no front page; every
+# API method lists. No headers, no footers, no cover page; every
 # pixel goes to content.
 #
 # Multi-column layout is not yet supported by the renderer; this

@@ -545,7 +545,7 @@ pub enum BlockDraw {
     /// flushes the current page when it encounters one and drops the
     /// marker. Synthetic — sources can't produce one directly (the
     /// renderer materialises them from style-driven features like the
-    /// front page).
+    /// cover page).
     PageBreak,
     /// A simple equal-width table with optional header row. `caption`
     /// is the caption text (used by the List of Tables when present).

@@ -10,9 +10,9 @@
 //!      and draw the blocks.
 
 mod block;
+mod coverpage;
 mod decoration;
 mod emit;
-mod frontpage;
 mod highlight;
 mod hyphen;
 mod inline;
@@ -215,24 +215,24 @@ pub fn render_pdf_with(
         (blocks, lctx.footnotes)
     };
 
-    // Prepend a synthesised cover/title page when the style enables
-    // it. The frontpage builder pulls everything from RenderContext
+    // Prepend a synthesised cover page when the style enables it.
+    // The coverpage builder pulls everything from RenderContext
     // (title / description / authors / date) plus the configured logo,
     // and ends with a PageBreak so body content starts on page 2.
-    let date_for_frontpage = ctx
+    let date_for_coverpage = ctx
         .date_string
         .clone()
         .unwrap_or_else(crate::dates::today_yyyy_mm_dd);
     let mut blocks = blocks;
-    if style.frontpage.enabled {
-        let mut fp = frontpage::build_frontpage_blocks(
+    if style.coverpage.enabled {
+        let mut fp = coverpage::build_coverpage_blocks(
             style,
             ctx,
             body_families,
             assets,
             &mut font_cx,
             &mut layout_cx,
-            &date_for_frontpage,
+            &date_for_coverpage,
         );
         fp.append(&mut blocks);
         blocks = fp;

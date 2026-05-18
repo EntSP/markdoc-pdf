@@ -193,7 +193,7 @@ List of Figures entries are linkable.
 ## Where to next
 
 - The full set of style knobs (margins, fonts, colours, headers,
-  footers, watermarks, frontpage, hyphenation, custom font loading)
+  footers, watermarks, coverpage, hyphenation, custom font loading)
   lives in [`examples/themes/README.md`](examples/themes/README.md).
 - For the full Markdoc tag/schema reference, see the parent
   `markdoc/` crate's documentation.

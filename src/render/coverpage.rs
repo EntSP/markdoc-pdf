@@ -1,4 +1,4 @@
-//! Synthesise a cover/title page from the document's frontmatter.
+//! Synthesise a cover page from the document's frontmatter.
 //!
 //! Markdoc source documents stay output-agnostic — they do NOT carry
 //! tags like `{% titlepage %}`. Instead the renderer materialises a
@@ -24,14 +24,14 @@ use crate::assets::{AssetResolver, MediaFormat, sniff_format};
 
 use super::RenderContext;
 use super::block::{Block, BlockDraw, TextSlice};
-use super::style::Style;
+use super::style::{LogoPosition, Style};
 use super::text::{TextStyle, build_layout_aligned};
 
 /// Build the synthesised cover-page block list. Returns an empty
-/// `Vec` when the front page is disabled so the caller can simply
+/// `Vec` when the cover page is disabled so the caller can simply
 /// concatenate without a feature check.
 #[allow(clippy::too_many_arguments)]
-pub fn build_frontpage_blocks(
+pub fn build_coverpage_blocks(
     style: &Style,
     render_ctx: &RenderContext,
     body_families: &'static [&'static str],
@@ -40,8 +40,8 @@ pub fn build_frontpage_blocks(
     layout_cx: &mut LayoutContext<rgb::Color>,
     date_str: &str,
 ) -> Vec<Block> {
-    let frontpage = &style.frontpage;
-    if !frontpage.enabled {
+    let coverpage = &style.coverpage;
+    if !coverpage.enabled {
         return Vec::new();
     }
     let mut out = Vec::new();
@@ -49,17 +49,26 @@ pub fn build_frontpage_blocks(
     let column_w = style.page_width - 2.0 * style.margin_x;
 
     // Top spacer.
-    if frontpage.top_margin > 0.0 {
-        out.push(spacer_block(body_left, frontpage.top_margin));
+    if coverpage.top_margin > 0.0 {
+        out.push(spacer_block(body_left, coverpage.top_margin));
     }
 
-    // Logo (best-effort — silently skipped on decode failure).
-    if let Some(logo) = &frontpage.logo
-        && let Some(block) = build_logo_block(logo, body_left, column_w, assets)
+    // Optional logo / hero image (best-effort — silently skipped on
+    // decode failure). Decoded once here so we can place it either
+    // above the title or between title and subtitle without
+    // duplicating the asset-resolver code.
+    let logo_block = coverpage
+        .logo
+        .as_ref()
+        .and_then(|logo| build_logo_block(logo, body_left, column_w, assets));
+
+    // Logo above the title (default).
+    if coverpage.logo_position == LogoPosition::Above
+        && let Some(block) = logo_block.clone()
     {
         out.push(block);
-        if frontpage.logo_to_title_gap > 0.0 {
-            out.push(spacer_block(body_left, frontpage.logo_to_title_gap));
+        if coverpage.logo_to_title_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.logo_to_title_gap));
         }
     }
 
@@ -69,9 +78,9 @@ pub fn build_frontpage_blocks(
             &render_ctx.title,
             body_left,
             column_w,
-            frontpage.title_font_size,
+            coverpage.title_font_size,
             700.0,
-            frontpage.text_color.into(),
+            coverpage.text_color.into(),
             body_families,
             style.body_line_height,
             font_cx,
@@ -79,19 +88,29 @@ pub fn build_frontpage_blocks(
         ));
     }
 
+    // Logo below the title (hero-image variant).
+    if coverpage.logo_position == LogoPosition::BelowTitle
+        && let Some(block) = logo_block
+    {
+        if coverpage.logo_to_title_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.logo_to_title_gap));
+        }
+        out.push(block);
+    }
+
     // Subtitle.
-    let subtitle = substitute(&frontpage.subtitle, render_ctx, date_str);
+    let subtitle = substitute(&coverpage.subtitle, render_ctx, date_str);
     if !subtitle.trim().is_empty() {
-        if frontpage.title_to_subtitle_gap > 0.0 {
-            out.push(spacer_block(body_left, frontpage.title_to_subtitle_gap));
+        if coverpage.title_to_subtitle_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.title_to_subtitle_gap));
         }
         out.push(centered_text_block(
             &subtitle,
             body_left,
             column_w,
-            frontpage.subtitle_font_size,
+            coverpage.subtitle_font_size,
             400.0,
-            frontpage.text_color.into(),
+            coverpage.text_color.into(),
             body_families,
             style.body_line_height,
             font_cx,
@@ -100,18 +119,18 @@ pub fn build_frontpage_blocks(
     }
 
     // Authors.
-    if frontpage.show_authors && !render_ctx.authors.is_empty() {
-        if frontpage.subtitle_to_authors_gap > 0.0 {
-            out.push(spacer_block(body_left, frontpage.subtitle_to_authors_gap));
+    if coverpage.show_authors && !render_ctx.authors.is_empty() {
+        if coverpage.subtitle_to_authors_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.subtitle_to_authors_gap));
         }
         let authors = render_ctx.authors.join(", ");
         out.push(centered_text_block(
             &authors,
             body_left,
             column_w,
-            frontpage.authors_font_size,
+            coverpage.authors_font_size,
             400.0,
-            frontpage.text_color.into(),
+            coverpage.text_color.into(),
             body_families,
             style.body_line_height,
             font_cx,
@@ -120,17 +139,17 @@ pub fn build_frontpage_blocks(
     }
 
     // Date.
-    if frontpage.show_date && !date_str.is_empty() {
-        if frontpage.authors_to_date_gap > 0.0 {
-            out.push(spacer_block(body_left, frontpage.authors_to_date_gap));
+    if coverpage.show_date && !date_str.is_empty() {
+        if coverpage.authors_to_date_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.authors_to_date_gap));
         }
         out.push(centered_text_block(
             date_str,
             body_left,
             column_w,
-            frontpage.date_font_size,
+            coverpage.date_font_size,
             400.0,
-            frontpage.text_color.into(),
+            coverpage.text_color.into(),
             body_families,
             style.body_line_height,
             font_cx,
@@ -138,7 +157,7 @@ pub fn build_frontpage_blocks(
         ));
     }
 
-    // Page break — flushes the cover page and starts body on page 2.
+    // Page break — flushes the cover page.
     out.push(Block {
         height: 0.0,
         space_after: 0.0,
@@ -147,6 +166,24 @@ pub fn build_frontpage_blocks(
         anchor_id: None,
         tag_role: None,
     });
+
+    // Optional blank verso — for double-sided printing the body
+    // typically wants to start on a recto (right-hand) page. The
+    // paginator dedupes consecutive PageBreaks, so we need a
+    // near-zero-height spacer between the two breaks to satisfy its
+    // "current page must be non-empty" check. The spacer renders
+    // nothing visible, so the resulting page is genuinely blank.
+    if coverpage.blank_page_after {
+        out.push(spacer_block(body_left, 0.001));
+        out.push(Block {
+            height: 0.0,
+            space_after: 0.0,
+            draw: BlockDraw::PageBreak,
+            outline: None,
+            anchor_id: None,
+            tag_role: None,
+        });
+    }
 
     out
 }

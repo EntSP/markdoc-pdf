@@ -379,12 +379,12 @@ pub struct Style {
     // ── Hyphenation ───────────────────────────────────────────────────
     pub hyphenation: HyphenationStyle,
 
-    // ── Front page (cover / title page) ───────────────────────────────
+    // ── Cover page ────────────────────────────────────────────────────
     /// Synthesised cover page rendered before any body content. Drawn
     /// from frontmatter (title, description, authors, date) plus an
     /// optional logo. Source documents stay output-agnostic — all
-    /// frontpage knobs live here in the style.
-    pub frontpage: FrontPageStyle,
+    /// cover-page knobs live here in the style.
+    pub coverpage: CoverPageStyle,
 }
 
 impl Default for Style {
@@ -442,7 +442,7 @@ impl Default for Style {
             font_paths: Vec::new(),
             body_font_families: Vec::new(),
             hyphenation: HyphenationStyle::default(),
-            frontpage: FrontPageStyle::default(),
+            coverpage: CoverPageStyle::default(),
         }
     }
 }
@@ -523,14 +523,35 @@ impl Default for WatermarkText {
 /// stack with explicit gaps between them. Set `subtitle` to a template
 /// string (`{description}`, `{date}`, etc.) when you want anything
 /// below the title.
+/// Where the optional logo / hero image sits in the cover-page stack.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LogoPosition {
+    /// At the top of the page, above the title. The default — fits
+    /// the "letterhead + report title" pattern.
+    #[default]
+    Above,
+    /// Between the title and the subtitle. Use this when the front
+    /// page leads with a big title and the image acts as a hero
+    /// rather than a small mark.
+    BelowTitle,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
-pub struct FrontPageStyle {
+pub struct CoverPageStyle {
     pub enabled: bool,
     pub logo: Option<LogoSpec>,
-    /// Vertical space above the logo (or above the title when no
-    /// logo). Defaults to 1/4 of A4 height.
+    /// Where the logo sits relative to the title. See [`LogoPosition`].
+    pub logo_position: LogoPosition,
+    /// Vertical space above the first element on the page (the logo
+    /// when `logo_position = "above"`, otherwise the title).
+    /// Defaults to ~1/4 of A4 height.
     pub top_margin: f32,
+    /// Gap between the logo image and the title text — applied
+    /// regardless of `logo_position`. When `above`, the gap is below
+    /// the logo; when `below_title`, it's between the title and the
+    /// logo.
     pub logo_to_title_gap: f32,
     pub title_font_size: f32,
     pub title_to_subtitle_gap: f32,
@@ -546,13 +567,19 @@ pub struct FrontPageStyle {
     pub show_date: bool,
     pub date_font_size: f32,
     pub text_color: ColorRgb,
+    /// When `true`, insert a fully blank page directly after the
+    /// cover page so the body content starts on page 3 — a recto in
+    /// double-sided printing. Useful for printed reports / books;
+    /// no effect when the document is read on screen.
+    pub blank_page_after: bool,
 }
 
-impl Default for FrontPageStyle {
+impl Default for CoverPageStyle {
     fn default() -> Self {
         Self {
             enabled: false,
             logo: None,
+            logo_position: LogoPosition::Above,
             top_margin: 200.0,
             logo_to_title_gap: 32.0,
             title_font_size: 32.0,
@@ -566,6 +593,7 @@ impl Default for FrontPageStyle {
             show_date: true,
             date_font_size: 11.0,
             text_color: ColorRgb::new(20, 20, 20),
+            blank_page_after: false,
         }
     }
 }

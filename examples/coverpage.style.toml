@@ -1,0 +1,58 @@
+# coverpage.style.toml
+#
+# Showcases the synthesised cover page with:
+#   1. Large title at the top.
+#   2. Large hero image directly below the title.
+#   3. Subtitle, authors and publication date stacked below the image.
+#
+# Drives data from frontmatter via `RenderContext`:
+#   - `title`              → big H1 on page 1
+#   - `{description}`      → subtitle template, resolved from
+#                            frontmatter `description`
+#   - `authors`            → joined authors line (auto-shown when
+#                            `show_authors` is true)
+#   - `firstReleaseDate`   → publication date line (auto-shown when
+#                            `show_date` is true)
+#
+# Render with: examples/coverpage.mdoc — it carries all four fields.
+
+# A bit more breathing room than the default A4 margins.
+margin_x = 80.0
+margin_y = 80.0
+
+# Hide the header/footer on the cover page itself; uncomment to apply
+# them to body pages too.
+[page_decoration]
+skip_first_page = true
+
+[coverpage]
+enabled       = true
+# Image sits BELOW the title (default is `above`, which puts a small
+# logo on top). Combine with a large width/height to get a hero look.
+logo_position = "below_title"
+# Insert a blank verso after the cover page so the body starts on a
+# recto (right-hand) page when printed double-sided. Set to `false`
+# if you only ever read on screen.
+blank_page_after = true
+# Push the title down so it has weight at the top of the page rather
+# than hugging the margin.
+top_margin             = 140.0
+title_font_size        = 44.0
+logo_to_title_gap      = 28.0   # gap between the title and the image
+title_to_subtitle_gap  = 36.0   # also acts as image-to-subtitle gap
+subtitle               = "{description}"
+subtitle_font_size     = 16.0
+subtitle_to_authors_gap = 30.0
+show_authors           = true
+authors_font_size      = 13.0
+authors_to_date_gap    = 10.0
+show_date              = true
+date_font_size         = 11.0
+
+# Hero image. The bundled swatch is a small SVG — it scales cleanly
+# up to whatever width / height you ask for here. Swap `src` for any
+# image your asset resolver knows how to find.
+[coverpage.logo]
+src    = "swatch.svg"
+width  = 380.0
+height = 120.0

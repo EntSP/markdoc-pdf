@@ -102,6 +102,40 @@ impl Inlines {
     }
 }
 
+/// Is the href something a PDF viewer can actually navigate to?
+///
+/// - `#anchor` — internal document destination, resolved by the
+///   emit layer; always OK.
+/// - `scheme:...` matching RFC 3986 (`http`, `https`, `mailto`,
+///   `tel`, `file`, …) — has a scheme, viewer can dispatch.
+/// - Anything else (`coverpage.style.toml`, `./foo.md`, `../bar`)
+///   is a relative path and PDF viewers treat the `/URI` action as
+///   non-navigable. Triggers the relative-href warning.
+fn is_navigable_uri(href: &str) -> bool {
+    if let Some(first) = href.chars().next()
+        && first == '#'
+    {
+        return true;
+    }
+    // RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) followed by ':'
+    let mut chars = href.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    for c in chars {
+        match c {
+            ':' => return true,
+            c if c.is_ascii_alphanumeric() => continue,
+            '+' | '-' | '.' => continue,
+            _ => return false,
+        }
+    }
+    false
+}
+
 /// Render an unsigned integer as the corresponding Unicode
 /// superscript characters (e.g. `12 → "¹²"`). Used as the inline call
 /// mark for a footnote.
@@ -220,6 +254,19 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                         if let Some(href) = href
                             && end > start
                         {
+                            // Warn on schemeless URIs — PDF viewers
+                            // don't navigate relative paths, so the
+                            // resulting annotation is inert. Authors
+                            // either want an absolute URL or an
+                            // intra-document `#anchor`.
+                            if !is_navigable_uri(&href) {
+                                let preview: String =
+                                    out.text[start..end].chars().take(40).collect();
+                                eprintln!(
+                                    "warning: link href {href:?} has no URL scheme — \
+                                     PDF viewers won't follow it (link text: {preview:?})"
+                                );
+                            }
                             out.links.push(LinkRange {
                                 start,
                                 end,
@@ -336,5 +383,73 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn navigable_intra_doc_anchor() {
+        // `#anchor` is always navigable — resolved by the emit layer
+        // into a GoTo destination on the anchor's page.
+        assert!(is_navigable_uri("#section"));
+        assert!(is_navigable_uri("#"));
+        assert!(is_navigable_uri("#a-b_c.123"));
+    }
+
+    #[test]
+    fn navigable_standard_schemes() {
+        // Anything with an RFC 3986 scheme followed by `:` is
+        // navigable from the renderer's perspective — the viewer
+        // decides what it actually does with the URI.
+        assert!(is_navigable_uri("http://example.com"));
+        assert!(is_navigable_uri("https://example.com/path?q=1"));
+        assert!(is_navigable_uri("file:///etc/hosts"));
+        assert!(is_navigable_uri("mailto:alice@example.com"));
+        assert!(is_navigable_uri("tel:+15551234"));
+        assert!(is_navigable_uri("ftp://ftp.example.com/"));
+    }
+
+    #[test]
+    fn navigable_custom_scheme() {
+        // Application-specific schemes are fine — viewers may not
+        // dispatch them, but the renderer can't know that and
+        // shouldn't warn on syntactically-valid schemes.
+        assert!(is_navigable_uri("arca://abc-def"));
+        assert!(is_navigable_uri("vscode://file/foo"));
+        // Scheme allows `+`, `-`, `.` after the leading ALPHA.
+        assert!(is_navigable_uri("git+ssh://host/repo"));
+        assert!(is_navigable_uri("foo.bar://baz"));
+    }
+
+    #[test]
+    fn schemeless_relative_paths_are_dead() {
+        // These are the cases that trigger the renderer's
+        // "PDF viewers won't follow it" warning.
+        assert!(!is_navigable_uri("coverpage.style.toml"));
+        assert!(!is_navigable_uri("./foo.md"));
+        assert!(!is_navigable_uri("../bar"));
+        assert!(!is_navigable_uri("/absolute/path"));
+        assert!(!is_navigable_uri("just-a-word"));
+    }
+
+    #[test]
+    fn schemes_must_start_with_alpha() {
+        // RFC 3986: scheme MUST begin with an ASCII letter. A leading
+        // digit / punctuation / non-ASCII char isn't a valid scheme.
+        assert!(!is_navigable_uri("123:abc"));
+        assert!(!is_navigable_uri("-foo:bar"));
+        assert!(!is_navigable_uri(":colon-leader"));
+        assert!(!is_navigable_uri(""));
+    }
+
+    #[test]
+    fn scheme_must_actually_have_a_colon() {
+        // "Looks like a scheme prefix but no colon" — still relative.
+        // Otherwise every all-lowercase-no-punct word would qualify.
+        assert!(!is_navigable_uri("http"));
+        assert!(!is_navigable_uri("about"));
     }
 }

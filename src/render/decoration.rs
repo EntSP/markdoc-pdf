@@ -358,12 +358,18 @@ pub fn emit_watermark(
                 font_families: default_families(),
                 italic: false,
             };
+            // Use Start alignment + manual centring: parley's `offset` is 0 so
+            // emit_layout draws at our translated origin verbatim. Centring
+            // is computed below from the line's `advance` and applied via a
+            // translate transform, because the watermark has to land at the
+            // page centre, not the column centre — Center alignment would
+            // give us the wrong reference point.
             let layout = build_layout_aligned(
                 &t.text,
                 &[],
                 &text_style,
                 10_000.0,
-                Alignment::Center,
+                Alignment::Start,
                 font_cx,
                 layout_cx,
             );

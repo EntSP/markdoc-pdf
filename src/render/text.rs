@@ -137,6 +137,11 @@ pub fn build_layout_aligned(
 /// `0..n` for the whole layout). `skip_y` is the cumulative height of
 /// lines preceding `line_range.start`; subtracting it from each
 /// baseline computation puts line `line_range.start` at `origin_y_top`.
+///
+/// Each line's per-line `metrics().offset` is honoured — parley sets
+/// this when `Alignment::Center` or `Alignment::End` is used so
+/// individual lines start at the right x within the layout's advance
+/// width. For default `Alignment::Start` text the offset is 0.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_layout(
     surface: &mut krilla::surface::Surface<'_>,
@@ -156,7 +161,7 @@ pub fn emit_layout(
             break;
         }
         let baseline_y = origin_y_top - skip_y + line.metrics().baseline;
-        let mut x = origin_x;
+        let mut x = origin_x + line.metrics().offset;
 
         for run in line.runs() {
             let mut cur_x = x;
@@ -279,7 +284,7 @@ pub fn emit_layout_segmented(
             break;
         }
         let baseline_y = origin_y_top - skip_y + line.metrics().baseline;
-        let mut x = origin_x;
+        let mut x = origin_x + line.metrics().offset;
 
         for run in line.runs() {
             let mut cur_x = x;

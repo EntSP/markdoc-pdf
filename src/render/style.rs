@@ -135,6 +135,41 @@ impl Default for CalloutStyle {
     }
 }
 
+/// How `[text](url)` links are visually distinguished from body text.
+/// The PDF link annotation is created regardless of these settings;
+/// these only affect the glyphs underneath so readers spot the link
+/// without hovering.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct LinkStyle {
+    /// Text colour applied to the link's glyphs.
+    pub color: ColorRgb,
+    /// Render link text in italic.
+    pub italic: bool,
+    /// Render link text in bold (font weight 700).
+    pub bold: bool,
+    /// Draw a stroked rule directly below each line of the link's
+    /// text, in `color` and at `underline_thickness`. Useful when
+    /// colour alone isn't enough to make the link stand out (e.g.
+    /// for accessibility or B&W printing).
+    pub underline: bool,
+    /// Stroke thickness for the underline rule, in PDF points.
+    /// Ignored when `underline = false`.
+    pub underline_thickness: f32,
+}
+
+impl Default for LinkStyle {
+    fn default() -> Self {
+        Self {
+            color: ColorRgb::new(20, 95, 175),
+            italic: false,
+            bold: false,
+            underline: false,
+            underline_thickness: 0.6,
+        }
+    }
+}
+
 /// Per-token-class colour palette for the built-in syntax highlighter.
 /// Token classes a language doesn't produce simply go unused; languages
 /// without a recognised name (or `language` attribute) fall back to
@@ -244,11 +279,11 @@ pub struct Style {
     pub body_line_height: f32,
     pub paragraph_space_after: f32,
     pub text_color: ColorRgb,
-    /// Colour applied to the text of `[text](url)` links inside a
-    /// paragraph. The PDF link annotation is created regardless; this
-    /// is purely the visual cue so a reader spots the link before they
+    /// How `[text](url)` links are visually distinguished from body
+    /// text. The PDF link annotation is created regardless; this is
+    /// purely the visual cue so a reader spots the link before they
     /// hover over it.
-    pub link_color: ColorRgb,
+    pub link: LinkStyle,
 
     // ── Headings ──────────────────────────────────────────────────────
     pub heading: HeadingStyles,
@@ -364,7 +399,7 @@ impl Default for Style {
             body_line_height: 1.5,
             paragraph_space_after: 8.0,
             text_color: ColorRgb::new(20, 20, 20),
-            link_color: ColorRgb::new(20, 95, 175),
+            link: LinkStyle::default(),
             heading: HeadingStyles::default(),
             list_indent: 24.0,
             list_item_space_after: 4.0,

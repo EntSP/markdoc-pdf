@@ -1,0 +1,26 @@
+# link-style.style.toml
+#
+# Showcase for the `[link]` style block. Every `[text](url)` link in
+# the document renders with the colour, weight, slant, and (optional)
+# underline configured below. The PDF annotation that makes the link
+# clickable is created regardless of these settings — they only
+# affect the glyphs underneath so a reader spots the link before
+# they hover.
+#
+# Defaults (with no `[link]` block at all):
+#   color               = { r = 20, g = 95, b = 175 }   # hyperlink blue
+#   italic              = false
+#   bold                = false
+#   underline           = false
+#   underline_thickness = 0.6                            # PDF points
+#
+# Run with this style and look at the "Links" section of `rich.mdoc`
+# — the two inline links should appear bold + italic, underlined in
+# a deep purple distinct from the body text.
+
+[link]
+color               = { r = 110, g = 30, b = 160 }
+italic              = true
+bold                = true
+underline           = true
+underline_thickness = 0.8

@@ -33,6 +33,18 @@ pub struct LinkRange {
     /// Optional title attribute on the link, used as alt text on the PDF
     /// annotation when present.
     pub title: Option<String>,
+    /// When `Some`, the renderer strokes a horizontal rule under each
+    /// line of this link's text at the configured colour and width.
+    /// Set by the paragraph layout from `Style::link` — the inline
+    /// collector itself never populates it.
+    pub underline: Option<UnderlineStroke>,
+}
+
+/// Stroke parameters for the optional underline drawn beneath a link.
+#[derive(Debug, Clone)]
+pub struct UnderlineStroke {
+    pub color: krilla::color::rgb::Color,
+    pub thickness: f32,
 }
 
 /// A mid-paragraph anchor declaration `{% tag id="X" %}` — the byte
@@ -201,6 +213,7 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                                 end,
                                 href,
                                 title,
+                                underline: None,
                             });
                         }
                         continue;
@@ -271,6 +284,7 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                                     end,
                                     href: format!("#{id}"),
                                     title: None,
+                                    underline: None,
                                 });
                             }
                             (None, None) => {

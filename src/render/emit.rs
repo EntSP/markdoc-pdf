@@ -227,6 +227,15 @@ fn emit_block(
                         slice.line_range.clone(),
                         slice.skip_y,
                     );
+                    draw_link_underlines(
+                        surface,
+                        &slice.layout,
+                        slice.x,
+                        y,
+                        lr,
+                        slice.line_range.clone(),
+                        slice.skip_y,
+                    );
                     if line_rects.is_empty() {
                         continue;
                     }
@@ -266,6 +275,15 @@ fn emit_block(
                         y,
                         lr,
                         links,
+                        slice.line_range.clone(),
+                        slice.skip_y,
+                    );
+                    draw_link_underlines(
+                        surface,
+                        &slice.layout,
+                        slice.x,
+                        y,
+                        lr,
                         slice.line_range.clone(),
                         slice.skip_y,
                     );
@@ -687,3 +705,75 @@ fn collect_link_rects_per_line(
 fn _silence_rgb(_: rgb::Color) {}
 #[allow(dead_code)]
 fn _silence_point(_: Point) {}
+
+/// Stroke a horizontal rule under each line of the link's text. Mirrors
+/// the geometry walk in [`collect_link_rects_per_line`] but, instead of
+/// pushing rects, emits a stroked path. Called after the glyphs of the
+/// containing `TextSlice` are drawn — the rule lands just below each
+/// line's baseline so it doesn't clip glyph descenders.
+fn draw_link_underlines(
+    surface: &mut krilla::surface::Surface<'_>,
+    layout: &Layout<rgb::Color>,
+    origin_x: f32,
+    origin_y_top: f32,
+    link: &LinkRange,
+    line_range: std::ops::Range<usize>,
+    skip_y: f32,
+) {
+    let Some(stroke_spec) = &link.underline else {
+        return;
+    };
+    for (i, line_obj) in layout.lines().enumerate() {
+        if i < line_range.start {
+            continue;
+        }
+        if i >= line_range.end {
+            break;
+        }
+        let metrics = line_obj.metrics();
+        let baseline = origin_y_top - skip_y + metrics.baseline;
+        // Park the rule one descender-half below the baseline. Far
+        // enough to clear most glyphs, close enough to read as part
+        // of the word.
+        let underline_y = baseline + metrics.descent * 0.5;
+
+        let mut x = origin_x + metrics.offset;
+        let mut link_min_x: Option<f32> = None;
+        let mut link_max_x: f32 = origin_x;
+        for run in line_obj.runs() {
+            for cluster in run.visual_clusters() {
+                if cluster.is_ligature_continuation() {
+                    continue;
+                }
+                let range = cluster.text_range();
+                let in_link = range.start < link.end && range.end > link.start;
+                let advance = cluster.advance();
+                if in_link {
+                    if link_min_x.is_none() {
+                        link_min_x = Some(x);
+                    }
+                    link_max_x = x + advance;
+                }
+                x += advance;
+            }
+        }
+        let Some(min_x) = link_min_x else {
+            continue;
+        };
+
+        let mut pb = PathBuilder::new();
+        pb.move_to(min_x, underline_y);
+        pb.line_to(link_max_x, underline_y);
+        let path = pb.finish().unwrap();
+        surface.set_stroke(Some(Stroke {
+            paint: stroke_spec.color.into(),
+            width: stroke_spec.thickness,
+            opacity: NormalizedF32::ONE,
+            ..Default::default()
+        }));
+        surface.draw_path(&path);
+        // Same hygiene as elsewhere — keep the surface stroke clear
+        // so subsequent text emits stay on rendering-mode 0.
+        surface.set_stroke(None);
+    }
+}

@@ -1158,18 +1158,44 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
     if inlines.text.trim().is_empty() {
         return out;
     }
-    // Tint link text so readers spot it before they hover. The PDF
+    // Style link text so readers spot it before they hover. The PDF
     // annotation is already created from `inlines.links`; this just
-    // colours the underlying glyphs. Done before hyphenation: links
+    // restyles the underlying glyphs. Done before hyphenation: links
     // pin the byte ranges anyway, so the soft-hyphen guard below
     // already skips paragraphs that contain any link.
-    let link_color: krilla::color::rgb::Color = ctx.style.link_color.into();
+    let link_style = &ctx.style.link;
+    let link_color: krilla::color::rgb::Color = link_style.color.into();
     for link in &inlines.links {
         inlines.style_ranges.push(InlineRange {
             start: link.start,
             end: link.end,
             prop: InlineProp::Color(link_color),
         });
+        if link_style.italic {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Italic,
+            });
+        }
+        if link_style.bold {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Bold,
+            });
+        }
+    }
+    // Stamp the underline stroke on each link so emit can stroke a
+    // rule under it. Stays None when the style disables underlining.
+    if link_style.underline {
+        let underline = super::inline::UnderlineStroke {
+            color: link_color,
+            thickness: link_style.underline_thickness,
+        };
+        for link in &mut inlines.links {
+            link.underline = Some(underline.clone());
+        }
     }
     // Hyphenate plain paragraphs only — inline ranges, links, anchors
     // and footnote calls all key on byte offsets, and inserting soft
@@ -1348,6 +1374,7 @@ pub fn build_toc_blocks(
             end: body.len(),
             href: format!("#{}", entry.target_anchor_id),
             title: None,
+            underline: None,
         }];
         let slice = TextSlice::whole(layout, body, links, entry_x);
         blocks.push(Block {
@@ -1428,6 +1455,7 @@ pub fn build_list_section_blocks(
             end: body.len(),
             href: format!("#{}", entry.target_anchor_id),
             title: None,
+            underline: None,
         }];
         let slice = TextSlice::whole(layout, body, links, column_x);
         blocks.push(Block {

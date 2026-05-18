@@ -1,0 +1,72 @@
+# callout-styles.style.toml
+#
+# Reference of every knob that affects `{% callout %}` rendering.
+# Values shown match the built-in defaults — copy this file and edit
+# the rows you want to change; omit blocks you're happy with and the
+# defaults will fill in.
+#
+# Anatomy of one callout box:
+#
+#     ┌─────────────────────────────────────────────────────────┐
+#     │                                                         │
+#     │ ┃  body content (uses the document's body text colour,  │
+#     │ ┃  callouts have no separate text colour today).        │
+#     │                                                         │
+#     └─────────────────────────────────────────────────────────┘
+#       ▲                                                      ▲
+#       │                                                      │
+#       └── accent stripe                          border ─────┘
+#           (width = callout_accent_width)
+#
+#   ↑                                                          ↑
+#   └── padding ─ callout_padding ────────────────────────────┘
+
+# ── Geometry — applies to every callout ────────────────────────────
+callout_padding      = 12.0   # inner padding on all sides (PDF points)
+callout_accent_width =  4.0   # width of the left stripe
+callout_space_after  = 12.0   # gap below the box before the next block
+
+# ── Per-severity colours ────────────────────────────────────────────
+# `{% callout type="<kind>" %}` selects which block applies. Unknown
+# `type=` values fall back to `note`. To map a brand-new severity to
+# its own visual style, edit `for_kind` in src/render/style.rs.
+#
+# Each block takes three colours:
+#   background — fill of the whole box
+#   border     — thin outline rectangle
+#   accent     — wider stripe on the left edge
+
+[callout_styles.note]
+background = { r = 247, g = 248, b = 250 }
+border     = { r = 220, g = 225, b = 230 }
+accent     = { r = 120, g = 130, b = 145 }
+
+[callout_styles.info]
+background = { r = 232, g = 244, b = 253 }
+border     = { r = 180, g = 213, b = 240 }
+accent     = { r =  54, g = 130, b = 200 }
+
+[callout_styles.warning]
+background = { r = 255, g = 247, b = 230 }
+border     = { r = 252, g = 211, b = 166 }
+accent     = { r = 217, g = 119, b =   6 }
+
+[callout_styles.caution]
+background = { r = 255, g = 247, b = 230 }
+border     = { r = 252, g = 211, b = 166 }
+accent     = { r = 217, g = 119, b =   6 }
+
+[callout_styles.danger]
+background = { r = 254, g = 232, b = 232 }
+border     = { r = 248, g = 187, b = 187 }
+accent     = { r = 204, g =  51, b =  51 }
+
+[callout_styles.success]
+background = { r = 232, g = 250, b = 240 }
+border     = { r = 168, g = 220, b = 188 }
+accent     = { r =  46, g = 160, b = 100 }
+
+[callout_styles.notice]
+background = { r = 245, g = 240, b = 255 }
+border     = { r = 214, g = 198, b = 240 }
+accent     = { r = 120, g =  80, b = 200 }

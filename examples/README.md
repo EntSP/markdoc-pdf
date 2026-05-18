@@ -46,6 +46,7 @@ small and readable.
 | `below.style.toml` | Caption positioned **below** the figure / table instead of above. |
 | `copyright-footer.style.toml` | Three-slot footer (copyright left, confidentiality + title centre, page-of-total right). Reference for footer authoring. |
 | `link-style.style.toml` | `[link]` block exercising all four knobs (`color`, `italic`, `bold`, `underline`). Renders links in bold italic purple with an underline. |
+| `callout-styles.style.toml` | Every callout-related knob spelled out: `callout_padding`, `callout_accent_width`, `callout_space_after`, plus per-severity `[callout_styles.<kind>]` blocks for all seven kinds. Values match the built-in defaults — copy and edit. |
 | `pdfa.style.toml` | One-liner: `pdf_export = "a2_b"`. Switches to PDF/A-2B output. |
 | `ua1.style.toml` | One-liner: `pdf_export = "u_a1"`. Switches to PDF/UA-1 (accessibility) output. |
 

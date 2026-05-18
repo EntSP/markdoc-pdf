@@ -1123,23 +1123,36 @@ fn caption_inlines_for_node(node: &RenderableTreeNode) -> Inlines {
 // ── Paragraph ───────────────────────────────────────────────────────────
 
 fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
-    // Markdown `![alt](url)` wraps inline `<img>` in a `<p>`. Promote
-    // any `<img>` / `<media>` direct children to block-level media so
-    // they actually render (rather than being collapsed into alt-text
-    // by the inline collector). Remaining children flow as a paragraph.
-    let mut media_blocks: Vec<Block> = Vec::new();
+    // Markdown / Markdoc both wrap some block-level constructs inside
+    // a `<p>` produced by pulldown-cmark:
+    //   - `![alt](url)` becomes `<p><img></p>` / `<p><media></p>`.
+    //   - `{% callout %}…{% /callout %}` written on its own line ends up
+    //     inside a synthetic paragraph because the tokeniser sees it as
+    //     a regular inline run.
+    // Promote any such direct child to its block-level layout so it
+    // actually renders as a box/image instead of being flattened into
+    // the inline text by the `Inlines` collector. Remaining children
+    // flow as a normal paragraph.
+    let mut promoted: Vec<Block> = Vec::new();
     let mut text_children: Vec<RenderableTreeNode> = Vec::new();
     for child in &tag.children {
-        if let RenderableTreeNode::Tag(t) = child
-            && (t.name == "img" || t.name == "media")
-        {
-            media_blocks.extend(layout_media(t, x, width, ctx));
-            continue;
+        if let RenderableTreeNode::Tag(t) = child {
+            match t.name.as_str() {
+                "img" | "media" => {
+                    promoted.extend(layout_media(t, x, width, ctx));
+                    continue;
+                }
+                "callout" => {
+                    promoted.extend(layout_callout(t, x, width, ctx));
+                    continue;
+                }
+                _ => {}
+            }
         }
         text_children.push(child.clone());
     }
 
-    let mut out = media_blocks;
+    let mut out = promoted;
 
     let mut inlines = Inlines::from(&text_children, &mut ctx.footnotes);
     if inlines.text.trim().is_empty() {
@@ -1753,6 +1766,65 @@ fn extract_code_text(children: &[RenderableTreeNode]) -> String {
     s
 }
 
+/// True for tag names that are laid out as block-level constructs.
+/// Anything not in this set (plain `Scalar`s, `strong`, `em`, `a`, …)
+/// is treated as inline content and grouped into a paragraph wrapper
+/// by [`wrap_inline_runs_in_paragraphs`].
+fn is_block_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "p" | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "ul"
+            | "ol"
+            | "blockquote"
+            | "pre"
+            | "callout"
+            | "table"
+            | "hr"
+            | "div"
+            | "img"
+            | "media"
+    )
+}
+
+/// Group consecutive inline children (bare `Scalar`s, inline `Tag`s like
+/// `strong`/`em`/`a`/`code`) into synthetic `<p>` wrappers, leaving
+/// block-level children untouched. Needed because markdoc's parser
+/// leaves loose inline content directly under a block-level tag like
+/// `{% callout %}…{% /callout %}` — without this wrapping
+/// `layout_node` would drop the bare scalars.
+fn wrap_inline_runs_in_paragraphs(children: &[RenderableTreeNode]) -> Vec<RenderableTreeNode> {
+    let mut out: Vec<RenderableTreeNode> = Vec::new();
+    let mut run: Vec<RenderableTreeNode> = Vec::new();
+    let flush = |run: &mut Vec<RenderableTreeNode>, out: &mut Vec<RenderableTreeNode>| {
+        if run.is_empty() {
+            return;
+        }
+        let p = Tag {
+            name: "p".to_string(),
+            attributes: std::collections::HashMap::new(),
+            children: std::mem::take(run),
+        };
+        out.push(RenderableTreeNode::Tag(Box::new(p)));
+    };
+    for child in children {
+        match child {
+            RenderableTreeNode::Tag(t) if is_block_tag(&t.name) => {
+                flush(&mut run, &mut out);
+                out.push(child.clone());
+            }
+            _ => run.push(child.clone()),
+        }
+    }
+    flush(&mut run, &mut out);
+    out
+}
+
 // ── Callout ─────────────────────────────────────────────────────────────
 
 fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
@@ -1768,7 +1840,13 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
     let inner_x = x + accent_w + padding;
     let inner_w = width - accent_w - 2.0 * padding;
 
-    let children = layout_children(&tag.children, inner_x, inner_w, ctx);
+    // markdoc's parser doesn't wrap a callout's text content in a `<p>` —
+    // body children come through as raw `Scalar`s and inline tags. Group
+    // consecutive inline children into synthetic paragraphs so they
+    // actually render; block-level tags (lists, tables, nested callouts)
+    // are still laid out individually.
+    let wrapped = wrap_inline_runs_in_paragraphs(&tag.children);
+    let children = layout_children(&wrapped, inner_x, inner_w, ctx);
     let inner_height: f32 = children
         .iter()
         .map(|b| b.height + b.space_after)

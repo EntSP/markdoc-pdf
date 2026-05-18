@@ -187,7 +187,19 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                     "strong" => Some(InlineProp::Bold),
                     "em" => Some(InlineProp::Italic),
                     "s" | "strikethrough" => Some(InlineProp::Strikethrough),
-                    "br" | "softbreak" | "hardbreak" => {
+                    "softbreak" => {
+                        // CommonMark soft break (a single newline
+                        // within a paragraph). Emit a space so words
+                        // either side stay separated; let parley pick
+                        // the wrap point.
+                        out.text.push(' ');
+                        collect_into(out, &t.children, footnotes);
+                        continue;
+                    }
+                    "br" | "hardbreak" => {
+                        // CommonMark hard break (two trailing spaces or
+                        // backslash). Force a line break — parley treats
+                        // U+000A as a mandatory break.
                         out.text.push('\n');
                         collect_into(out, &t.children, footnotes);
                         continue;

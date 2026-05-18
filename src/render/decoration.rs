@@ -438,6 +438,7 @@ fn draw_rule(
             ..Default::default()
         }));
         surface.draw_path(&path);
+        surface.set_stroke(None);
     }
     // Suppress unused-Point/PathBuilder warnings when nothing draws.
     let _ = Point::from_xy(0.0, 0.0);

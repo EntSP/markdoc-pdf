@@ -356,6 +356,10 @@ fn emit_block(
                 ..Default::default()
             }));
             surface.draw_path(&path);
+            // Krilla persists stroke state until the next set_stroke
+            // call. Clearing it now means subsequent text emits don't
+            // get drawn under text-rendering-mode 2 (fill + stroke).
+            surface.set_stroke(None);
         }
 
         BlockDraw::BoxedGroup {
@@ -404,6 +408,7 @@ fn emit_block(
                     ..Default::default()
                 }));
                 surface.draw_path(&path);
+                surface.set_stroke(None);
             }
 
             // 3. Left accent stripe.
@@ -569,6 +574,7 @@ fn emit_block(
                 v_x += *col_w + *border_thickness;
                 line(surface, v_x, top, v_x, bottom);
             }
+            surface.set_stroke(None);
         }
     }
 }

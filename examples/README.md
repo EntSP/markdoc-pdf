@@ -69,17 +69,3 @@ The referenced assets:
 
 Pass `--assets-root examples` so the renderer resolves these relative
 to this directory.
-
-## Architecture spike
-
-`parley_krilla_spike.rs` is **not** a markdoc-pdf demo — it's a
-standalone end-to-end test that proves parley (text shaping) and
-krilla (PDF emit) can be wired together at all. Useful when bumping
-either dependency. Run with:
-
-```sh
-cargo run --example parley_krilla_spike
-```
-
-If it writes a readable `spike.pdf` with both the paragraph and the
-SVG callout, the rendering substrate is healthy.

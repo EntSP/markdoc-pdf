@@ -115,6 +115,44 @@ impl HeadingStyles {
     }
 }
 
+/// Automatic section numbering for headings (`1`, `1.1`, `1.1.1`, …).
+///
+/// Off by default — themes that don't opt in render headings exactly as
+/// before. When enabled, the computed prefix is baked into the heading
+/// text itself, so it flows automatically into the visible heading, the
+/// running header (`{chapter}` / `{section}`), and the table of contents.
+///
+/// Only levels `1..=max_depth` are numbered; deeper headings render
+/// unprefixed (a common convention — e.g. number chapters/sections but
+/// leave sub-sub-subsections plain). An individual heading opts out by
+/// carrying an anchor tag with `numbered="false"`
+/// (`## Copyright {% tag numbered="false" /%}`) — used for front-matter
+/// sections (copyright, preface) that should precede `1.` without
+/// consuming a number.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct HeadingNumbering {
+    /// Master switch. When `false` (the default) no numbering happens.
+    pub enabled: bool,
+    /// Deepest heading level that receives a number. `3` numbers
+    /// `h1`/`h2`/`h3` and leaves `h4`+ plain. Clamped to `1..=6`.
+    pub max_depth: u8,
+    /// String placed between the last number and the heading text.
+    /// Defaults to a single space (`"1.2 Title"`); set to e.g. `". "`
+    /// for `"1.2. Title"`.
+    pub separator: String,
+}
+
+impl Default for HeadingNumbering {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_depth: 3,
+            separator: " ".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CalloutStyle {
@@ -287,6 +325,8 @@ pub struct Style {
 
     // ── Headings ──────────────────────────────────────────────────────
     pub heading: HeadingStyles,
+    /// Automatic `1` / `1.1` / `1.1.1` section numbering. Off by default.
+    pub heading_numbering: HeadingNumbering,
 
     // ── Lists ─────────────────────────────────────────────────────────
     pub list_indent: f32,
@@ -401,6 +441,7 @@ impl Default for Style {
             text_color: ColorRgb::new(20, 20, 20),
             link: LinkStyle::default(),
             heading: HeadingStyles::default(),
+            heading_numbering: HeadingNumbering::default(),
             list_indent: 24.0,
             list_item_space_after: 4.0,
             list_marker_gap: 8.0,

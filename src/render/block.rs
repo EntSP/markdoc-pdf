@@ -837,6 +837,11 @@ pub struct LayoutCtx<'a> {
     /// break inside long words. Paragraphs with inline markup are
     /// skipped to avoid drifting byte offsets in their ranges.
     pub hyphenator: Option<&'a super::hyphen::WordHyphenator>,
+    /// Running per-level counters for automatic heading numbering,
+    /// indexed by `level - 1` (so `[0]` is h1). Only meaningful when
+    /// `style.heading_numbering.enabled`. A heading at level L bumps
+    /// `counters[L-1]` and zeroes every deeper level.
+    pub heading_counters: [u32; 6],
 }
 
 impl<'a> LayoutCtx<'a> {
@@ -855,6 +860,43 @@ impl<'a> LayoutCtx<'a> {
         self.next_table += 1;
         n
     }
+
+    /// Advance the heading counters for a numbered heading at `level`
+    /// and return the formatted prefix (e.g. `"1.2.1"`), without the
+    /// trailing separator. Returns `None` when numbering is disabled or
+    /// `level` is deeper than the configured `max_depth`.
+    fn bump_heading_number(&mut self, level: u8) -> Option<String> {
+        let cfg = &self.style.heading_numbering;
+        if !cfg.enabled {
+            return None;
+        }
+        bump_heading_counters(&mut self.heading_counters, level, cfg.max_depth)
+    }
+}
+
+/// Advance `counters` for a heading at `level` (1-based) and format the
+/// dotted prefix. Returns `None` when `level` is 0 or deeper than
+/// `max_depth` (clamped to `1..=6`).
+///
+/// Bumping a level resets all deeper levels, so a fresh `h2` after
+/// `1.3.4` yields `1.4` rather than `1.4.4`. Pulled out as a free
+/// function so the counter arithmetic is unit-testable without building
+/// a whole `LayoutCtx`.
+fn bump_heading_counters(counters: &mut [u32; 6], level: u8, max_depth: u8) -> Option<String> {
+    if level == 0 || level > max_depth.clamp(1, 6) {
+        return None;
+    }
+    let idx = (level - 1) as usize;
+    counters[idx] += 1;
+    for deeper in &mut counters[idx + 1..] {
+        *deeper = 0;
+    }
+    let prefix = counters[..=idx]
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(".");
+    Some(prefix)
 }
 
 /// Used as a stand-in resolver when the caller hasn't supplied one.
@@ -1473,21 +1515,44 @@ pub fn build_list_section_blocks(
 
 // ── Heading ─────────────────────────────────────────────────────────────
 
+/// True when tag `t` carries `key` set to a falsey scalar — `false`
+/// (boolean), `"false"`, or `"0"`. Used to read `numbered="false"` off
+/// a heading's anchor tag. Absent or any other value reads as "not
+/// explicitly false".
+fn attr_is_false(t: &Tag, key: &str) -> bool {
+    match t.attributes.get(key) {
+        Some(Scalar::Boolean(b)) => !b,
+        Some(Scalar::String(s)) => {
+            let s = s.trim();
+            s.eq_ignore_ascii_case("false") || s == "0"
+        }
+        _ => false,
+    }
+}
+
 fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
     let h = ctx.style.heading.for_level(level).clone();
 
     // Pull anchor declarations (`{% tag id="X" %}`) out of the heading's
     // children so the id is recorded on the resulting block. Returns
     // the first id found; subsequent declarations on the same heading
-    // are ignored (uncommon, but tolerated).
+    // are ignored (uncommon, but tolerated). The same scan reads an
+    // optional `numbered="false"` attribute which opts the heading out
+    // of automatic section numbering (used for front-matter headings).
     let mut heading_anchor: Option<String> = None;
+    let mut opt_out_numbering = false;
     for child in &tag.children {
         if let RenderableTreeNode::Tag(t) = child
             && t.name == "tag"
-            && let Some(id) = super::inline::anchor_id_attr(t)
         {
-            heading_anchor = Some(id);
-            break;
+            if heading_anchor.is_none()
+                && let Some(id) = super::inline::anchor_id_attr(t)
+            {
+                heading_anchor = Some(id);
+            }
+            if attr_is_false(t, "numbered") {
+                opt_out_numbering = true;
+            }
         }
     }
 
@@ -1496,6 +1561,22 @@ fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<
     collect_inlines(&mut text, &mut ranges, &tag.children, &mut ctx.footnotes);
     if text.trim().is_empty() {
         return Vec::new();
+    }
+
+    // Prepend the automatic section number when enabled and not opted
+    // out. Baking it into `text` (and the outline text below) means it
+    // flows to the visible heading, the running header, and the ToC
+    // without any further plumbing — each consumes the heading string.
+    if !opt_out_numbering && let Some(number) = ctx.bump_heading_number(level) {
+        let prefix = format!("{number}{}", ctx.style.heading_numbering.separator);
+        // Shift any inline style ranges right by the prefix length so
+        // bold/italic spans keep covering the original words.
+        let shift = prefix.len();
+        for r in &mut ranges {
+            r.start += shift;
+            r.end += shift;
+        }
+        text.insert_str(0, &prefix);
     }
 
     // Emit space-before as an empty (zero-height) spacer block so the
@@ -2531,4 +2612,103 @@ fn layout_table_cell_paragraph(
 
         tag_role: None,
     }]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use markdoc::types::Tag as MdTag;
+    use std::collections::HashMap;
+
+    #[test]
+    fn heading_counters_nest_and_reset() {
+        let mut c = [0u32; 6];
+        // h1, h2, h3 walk down.
+        assert_eq!(bump_heading_counters(&mut c, 1, 3).as_deref(), Some("1"));
+        assert_eq!(bump_heading_counters(&mut c, 2, 3).as_deref(), Some("1.1"));
+        assert_eq!(
+            bump_heading_counters(&mut c, 3, 3).as_deref(),
+            Some("1.1.1")
+        );
+        // Another h3 increments only the deepest.
+        assert_eq!(
+            bump_heading_counters(&mut c, 3, 3).as_deref(),
+            Some("1.1.2")
+        );
+        // A new h2 resets the h3 counter.
+        assert_eq!(bump_heading_counters(&mut c, 2, 3).as_deref(), Some("1.2"));
+        assert_eq!(
+            bump_heading_counters(&mut c, 3, 3).as_deref(),
+            Some("1.2.1")
+        );
+        // A new h1 resets h2 and h3.
+        assert_eq!(bump_heading_counters(&mut c, 1, 3).as_deref(), Some("2"));
+        assert_eq!(bump_heading_counters(&mut c, 2, 3).as_deref(), Some("2.1"));
+    }
+
+    #[test]
+    fn heading_numbering_respects_max_depth() {
+        let mut c = [0u32; 6];
+        assert_eq!(bump_heading_counters(&mut c, 1, 2).as_deref(), Some("1"));
+        assert_eq!(bump_heading_counters(&mut c, 2, 2).as_deref(), Some("1.1"));
+        // h3 is past max_depth = 2 → no number, and counters untouched.
+        assert_eq!(bump_heading_counters(&mut c, 3, 2), None);
+        // The next h2 still follows on from 1.1, unaffected by the h3.
+        assert_eq!(bump_heading_counters(&mut c, 2, 2).as_deref(), Some("1.2"));
+    }
+
+    #[test]
+    fn heading_numbering_clamps_and_guards() {
+        let mut c = [0u32; 6];
+        // level 0 never numbers.
+        assert_eq!(bump_heading_counters(&mut c, 0, 3), None);
+        // max_depth 0 clamps up to 1 so h1 still numbers.
+        assert_eq!(bump_heading_counters(&mut c, 1, 0).as_deref(), Some("1"));
+    }
+
+    fn tag_with_attrs(attrs: &[(&str, Scalar)]) -> MdTag {
+        let mut m = HashMap::new();
+        for (k, v) in attrs {
+            m.insert((*k).to_string(), v.clone());
+        }
+        MdTag {
+            name: "tag".to_string(),
+            attributes: m,
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn attr_is_false_recognises_falsey_forms() {
+        assert!(attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::Boolean(false))]),
+            "numbered"
+        ));
+        assert!(attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::String("false".into()))]),
+            "numbered"
+        ));
+        assert!(attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::String("False".into()))]),
+            "numbered"
+        ));
+        assert!(attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::String("0".into()))]),
+            "numbered"
+        ));
+    }
+
+    #[test]
+    fn attr_is_false_rejects_truthy_or_absent() {
+        assert!(!attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::Boolean(true))]),
+            "numbered"
+        ));
+        assert!(!attr_is_false(
+            &tag_with_attrs(&[("numbered", Scalar::String("true".into()))]),
+            "numbered"
+        ));
+        // Absent attribute → not explicitly false.
+        assert!(!attr_is_false(&tag_with_attrs(&[]), "numbered"));
+    }
 }

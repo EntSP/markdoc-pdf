@@ -210,6 +210,7 @@ pub fn render_pdf_with(
             footnotes: Vec::new(),
             body_families,
             hyphenator: hyphenator.as_ref(),
+            heading_counters: [0; 6],
         };
         let blocks = block::layout_document(root, &mut lctx);
         (blocks, lctx.footnotes)

@@ -24,6 +24,7 @@ use crate::assets::{AssetResolver, MediaFormat, sniff_format};
 
 use super::RenderContext;
 use super::block::{Block, BlockDraw, TextSlice};
+use super::inline::{InlineProp, InlineRange};
 use super::style::{CoverAlign, LogoPosition, Style};
 use super::text::{TextStyle, build_layout_aligned};
 
@@ -73,15 +74,23 @@ pub fn build_coverpage_blocks(
         }
     }
 
-    // Title.
+    // Title — the product/document name in bold, optionally followed by
+    // a lighter-weight accent run (e.g. the document type) on the same
+    // line. The accent template substitutes against the frontmatter.
     if !render_ctx.title.is_empty() {
-        out.push(cover_text_block(
+        let accent = substitute(&coverpage.title_accent, render_ctx, date_str);
+        let accent_color = coverpage
+            .title_accent_color
+            .unwrap_or(coverpage.text_color)
+            .into();
+        out.push(cover_title_block(
             &render_ctx.title,
+            accent.trim_end_matches('\n'),
             body_left,
             column_w,
             coverpage.title_font_size,
-            700.0,
             coverpage.text_color.into(),
+            accent_color,
             align,
             body_families,
             style.body_line_height,
@@ -292,6 +301,63 @@ fn cover_alignment(align: CoverAlign) -> Alignment {
     match align {
         CoverAlign::Center => Alignment::Center,
         CoverAlign::Left => Alignment::Start,
+    }
+}
+
+/// Build the cover title as a single layout: the `title` in bold,
+/// followed inline by an optional `accent` run in normal weight and
+/// the accent colour. Both parts share one parley layout so they sit
+/// on the same baseline and wrap together. When `accent` is empty the
+/// result is just the bold title.
+#[allow(clippy::too_many_arguments)]
+fn cover_title_block(
+    title: &str,
+    accent: &str,
+    body_left: f32,
+    column_w: f32,
+    font_size: f32,
+    title_color: rgb::Color,
+    accent_color: rgb::Color,
+    align: Alignment,
+    body_families: &'static [&'static str],
+    line_height: f32,
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<rgb::Color>,
+) -> Block {
+    let text = format!("{title}{accent}");
+    // Base layout is normal weight in the title colour; the title span
+    // is promoted to bold, leaving the accent run lighter. The accent
+    // span is recoloured.
+    let mut ranges = vec![InlineRange {
+        start: 0,
+        end: title.len(),
+        prop: InlineProp::Bold,
+    }];
+    if !accent.is_empty() {
+        ranges.push(InlineRange {
+            start: title.len(),
+            end: text.len(),
+            prop: InlineProp::Color(accent_color),
+        });
+    }
+    let style = TextStyle {
+        font_size,
+        font_weight: 400.0,
+        line_height,
+        color: title_color,
+        font_families: body_families,
+        italic: false,
+    };
+    let layout = build_layout_aligned(&text, &ranges, &style, column_w, align, font_cx, layout_cx);
+    let slice = TextSlice::whole(layout, text, Vec::new(), body_left);
+    let height = slice.height();
+    Block {
+        height,
+        space_after: 0.0,
+        draw: BlockDraw::Text(slice),
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
     }
 }
 

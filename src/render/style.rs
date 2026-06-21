@@ -681,6 +681,15 @@ pub struct CoverPageStyle {
     /// logo.
     pub logo_to_title_gap: f32,
     pub title_font_size: f32,
+    /// Optional accent run appended inline to the title and rendered in
+    /// a lighter weight and (optionally) a different colour — e.g. a
+    /// title of "MyProduct" with `title_accent = " Manual"` renders the
+    /// product name bold and "Manual" in a muted accent beside it. The
+    /// string is a template (`{title}` / `{date}` / any frontmatter var)
+    /// so the accent can come from metadata; empty omits it.
+    pub title_accent: String,
+    /// Colour for `title_accent`. Defaults to `text_color` when unset.
+    pub title_accent_color: Option<ColorRgb>,
     pub title_to_subtitle_gap: f32,
     /// Template string for the subtitle — supports the same
     /// `{title}`/`{description}`/`{date}` substitutions as headers.
@@ -727,6 +736,8 @@ impl Default for CoverPageStyle {
             top_margin: 200.0,
             logo_to_title_gap: 32.0,
             title_font_size: 32.0,
+            title_accent: String::new(),
+            title_accent_color: None,
             title_to_subtitle_gap: 12.0,
             subtitle: String::new(),
             subtitle_font_size: 14.0,

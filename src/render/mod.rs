@@ -316,6 +316,19 @@ pub fn render_pdf_with(
     };
 
     // ── Optional: synthesise & insert ToC / List of Figures / List of Tables ─
+    // Where the start-positioned front matter splits from the body: after
+    // the cover by default, or — when the document carries a `{% toc /%}`
+    // marker — after the page that marker falls on (so any front-matter
+    // sections before it, e.g. a copyright page, precede the ToC).
+    let split_at = body_with_pools
+        .iter()
+        .position(|(blocks, _)| {
+            blocks
+                .iter()
+                .any(|b| b.anchor_id.as_deref() == Some(block::TOC_MARKER_ANCHOR))
+        })
+        .map(|marker_page| marker_page + 1)
+        .unwrap_or(cover_page_count);
     let any_section = style.toc.enabled || style.lof.enabled || style.lot.enabled;
     let pages: Vec<(Vec<block::Block>, Vec<block::Block>)> = if any_section {
         build_with_front_matter_pools(
@@ -325,7 +338,7 @@ pub fn render_pdf_with(
             &mut font_cx,
             &mut layout_cx,
             page_budget,
-            cover_page_count,
+            split_at,
         )
     } else {
         body_with_pools
@@ -753,7 +766,7 @@ fn build_with_front_matter_pools(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     page_budget: f32,
-    cover_page_count: usize,
+    split_at: usize,
 ) -> Vec<(Vec<block::Block>, Vec<block::Block>)> {
     let body_pages: Vec<Vec<block::Block>> =
         body_with_pools.iter().map(|(b, _)| b.clone()).collect();
@@ -764,18 +777,17 @@ fn build_with_front_matter_pools(
         font_cx,
         layout_cx,
         page_budget,
+        split_at,
     );
 
-    // The synthesised cover (the first `cover_page_count` body pages)
-    // must lead; start-positioned ToC / LoF / LoT slot in *after* it.
-    // Page numbers already account for this — a content heading at body
-    // page `idx` (which counts the cover pages) maps to final page
-    // `idx + start_offset + 1`, so the cover offset cancels out.
-    let k = cover_page_count.min(body_with_pools.len());
+    // The leading `split_at` body pages — the cover plus any front matter
+    // before a `{% toc /%}` marker — come first; start-positioned ToC /
+    // LoF / LoT slot in *after* them, and the rest of the body follows.
+    let k = split_at.min(body_with_pools.len());
     let rest_body = body_with_pools.split_off(k);
-    let cover_pages = body_with_pools; // the leading `k` (body, pool) pages
+    let leading_pages = body_with_pools; // the leading `k` (body, pool) pages
 
-    let mut out = cover_pages;
+    let mut out = leading_pages;
     out.extend(start_pages.into_iter().map(|p| (p, Vec::new())));
     out.extend(rest_body);
     out.extend(end_pages.into_iter().map(|p| (p, Vec::new())));
@@ -803,6 +815,7 @@ fn build_front_matter_split(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     page_budget: f32,
+    split_at: usize,
 ) -> FrontMatterPages {
     let headings = harvest_heading_entries(&body_pages);
     let figures = harvest_figure_entries(&body_pages);
@@ -828,7 +841,12 @@ fn build_front_matter_split(
                     level: h.level,
                     text: h.text.clone(),
                     target_anchor_id: h.anchor_id.clone(),
-                    page_number: page_number_for(h.body_page_idx, style.toc.position, start_offset),
+                    page_number: page_number_for(
+                        h.body_page_idx,
+                        style.toc.position,
+                        start_offset,
+                        split_at,
+                    ),
                 })
                 .collect();
             let blocks =
@@ -844,7 +862,12 @@ fn build_front_matter_split(
                     level: 1,
                     text: figure_caption(i, f, style),
                     target_anchor_id: f.anchor_id.clone(),
-                    page_number: page_number_for(f.body_page_idx, style.lof.position, start_offset),
+                    page_number: page_number_for(
+                        f.body_page_idx,
+                        style.lof.position,
+                        start_offset,
+                        split_at,
+                    ),
                 })
                 .collect();
             let blocks = block::build_list_section_blocks(
@@ -869,7 +892,12 @@ fn build_front_matter_split(
                     level: 1,
                     text: table_caption(i, t, style),
                     target_anchor_id: t.anchor_id.clone(),
-                    page_number: page_number_for(t.body_page_idx, style.lot.position, start_offset),
+                    page_number: page_number_for(
+                        t.body_page_idx,
+                        style.lot.position,
+                        start_offset,
+                        split_at,
+                    ),
                 })
                 .collect();
             let blocks = block::build_list_section_blocks(
@@ -901,9 +929,21 @@ fn any_start_section_enabled(style: &Style) -> bool {
         || (style.lot.enabled && style.lot.position == TocPosition::Start)
 }
 
-fn page_number_for(body_idx: usize, position: TocPosition, start_offset: usize) -> usize {
+/// Final 1-based page number for a heading on body page `body_idx`.
+///
+/// For a start-positioned ToC, the `start_offset` ToC pages sit at
+/// `split_at` (after the leading cover / front-matter pages). A heading
+/// in those leading pages (`body_idx < split_at`) keeps its natural
+/// number; a heading after the split is pushed down by `start_offset`.
+fn page_number_for(
+    body_idx: usize,
+    position: TocPosition,
+    start_offset: usize,
+    split_at: usize,
+) -> usize {
     match position {
         TocPosition::End => body_idx + 1,
+        TocPosition::Start if body_idx < split_at => body_idx + 1,
         TocPosition::Start => body_idx + start_offset + 1,
     }
 }

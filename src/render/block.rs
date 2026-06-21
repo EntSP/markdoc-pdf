@@ -969,6 +969,13 @@ fn layout_node(
 
         "img" | "media" => layout_media(tag, x, width, ctx),
 
+        // `{% toc /%}` marks where a start-positioned table of contents
+        // should be inserted (front matter before it, body after). The
+        // marker block renders nothing; the renderer locates its page to
+        // pick the split point. A trailing page break starts the body on
+        // a fresh page after the ToC.
+        "toc" => vec![toc_marker_block(x), page_break_block()],
+
         "hr" => vec![layout_rule(x, width, ctx.style)],
 
         // Inline-only tags should never appear at block level (`a`, `strong`
@@ -2137,6 +2144,41 @@ fn layout_rule(x: f32, width: f32, style: &Style) -> Block {
         outline: None,
         anchor_id: None,
 
+        tag_role: None,
+    }
+}
+
+/// Sentinel anchor id stamped on the `{% toc /%}` marker block. The
+/// leading control character keeps it from ever colliding with an
+/// author-declared `{% tag id="…" %}` anchor.
+pub const TOC_MARKER_ANCHOR: &str = "\u{0}toc-marker";
+
+/// Zero-height marker block for `{% toc /%}`. Renders nothing; the
+/// renderer finds it by [`TOC_MARKER_ANCHOR`] to place the ToC.
+fn toc_marker_block(x: f32) -> Block {
+    Block {
+        height: 0.0,
+        space_after: 0.0,
+        draw: BlockDraw::Rule {
+            x,
+            width: 0.0,
+            thickness: 0.0,
+            color: rgb::Color::new(0, 0, 0),
+        },
+        outline: None,
+        anchor_id: Some(TOC_MARKER_ANCHOR.to_string()),
+        tag_role: None,
+    }
+}
+
+/// A page-break marker block (flushes the current page during pagination).
+fn page_break_block() -> Block {
+    Block {
+        height: 0.0,
+        space_after: 0.0,
+        draw: BlockDraw::PageBreak,
+        outline: None,
+        anchor_id: None,
         tag_role: None,
     }
 }

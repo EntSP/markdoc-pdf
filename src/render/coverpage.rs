@@ -61,7 +61,7 @@ pub fn build_coverpage_blocks(
     let logo_block = coverpage
         .logo
         .as_ref()
-        .and_then(|logo| build_logo_block(logo, body_left, column_w, assets));
+        .and_then(|logo| build_logo_block(logo, body_left, column_w, coverpage.align, assets));
 
     // Logo above the title (default).
     if coverpage.logo_position == LogoPosition::Above
@@ -337,6 +337,7 @@ fn build_logo_block(
     logo: &super::style::LogoSpec,
     body_left: f32,
     column_w: f32,
+    align: CoverAlign,
     assets: &dyn AssetResolver,
 ) -> Option<Block> {
     if logo.src.is_empty() || logo.width <= 0.0 || logo.height <= 0.0 {
@@ -344,7 +345,12 @@ fn build_logo_block(
     }
     let bytes = assets.fetch(&logo.src).ok()?;
     let format = sniff_format(&bytes);
-    let x = body_left + (column_w - logo.width).max(0.0) * 0.5;
+    // Match the cover's text alignment: flush-left for a left title page,
+    // centred otherwise.
+    let x = match align {
+        CoverAlign::Left => body_left,
+        CoverAlign::Center => body_left + (column_w - logo.width).max(0.0) * 0.5,
+    };
     let block = match format {
         MediaFormat::Png | MediaFormat::Jpeg | MediaFormat::Gif | MediaFormat::Webp => {
             let image = match format {

@@ -35,6 +35,10 @@ pub struct HeadingStyle {
     pub font_weight: f32,
     pub space_before: f32,
     pub space_after: f32,
+    /// Text colour for this heading level. Defaults to the document
+    /// body `text_color` when unset; set it (e.g. to a brand colour)
+    /// to tint headings independently of body text.
+    pub color: Option<ColorRgb>,
 }
 
 impl Default for HeadingStyle {
@@ -44,6 +48,7 @@ impl Default for HeadingStyle {
             font_weight: 700.0,
             space_before: 12.0,
             space_after: 6.0,
+            color: None,
         }
     }
 }
@@ -67,36 +72,42 @@ impl Default for HeadingStyles {
                 font_weight: 700.0,
                 space_before: 18.0,
                 space_after: 12.0,
+                color: None,
             },
             h2: HeadingStyle {
                 font_size: 21.0,
                 font_weight: 700.0,
                 space_before: 16.0,
                 space_after: 10.0,
+                color: None,
             },
             h3: HeadingStyle {
                 font_size: 17.0,
                 font_weight: 700.0,
                 space_before: 14.0,
                 space_after: 8.0,
+                color: None,
             },
             h4: HeadingStyle {
                 font_size: 14.0,
                 font_weight: 700.0,
                 space_before: 12.0,
                 space_after: 6.0,
+                color: None,
             },
             h5: HeadingStyle {
                 font_size: 12.0,
                 font_weight: 700.0,
                 space_before: 10.0,
                 space_after: 6.0,
+                color: None,
             },
             h6: HeadingStyle {
                 font_size: 11.0,
                 font_weight: 700.0,
                 space_before: 10.0,
                 space_after: 4.0,
+                color: None,
             },
         }
     }

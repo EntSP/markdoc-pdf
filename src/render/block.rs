@@ -1605,7 +1605,7 @@ fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<
         font_size: h.font_size,
         font_weight: h.font_weight,
         line_height: ctx.style.body_line_height,
-        color: ctx.style.text_color.into(),
+        color: h.color.unwrap_or(ctx.style.text_color).into(),
         font_families: ctx.body_families,
         italic: false,
     };

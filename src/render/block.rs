@@ -15,6 +15,7 @@ use crate::assets::{AssetResolver, MediaFormat, NullAssetResolver, sniff_format}
 
 use super::inline::{InlineProp, InlineRange, Inlines, LinkRange, MidAnchor, collect_inlines};
 use super::paginate::paginate as paginate_blocks;
+use super::style::MarkerSequence;
 use super::style::Style;
 use super::style::TableColumnSizing;
 use super::text::{TextStyle, build_layout, measure_first_line_width, monospace_families};
@@ -503,6 +504,21 @@ pub struct BoxedGroupIcon {
     pub size: f32,
 }
 
+/// Circle-badge geometry for an ordered-list marker, precomputed at
+/// layout time so emit only has to stroke a circle and centre the
+/// marker glyphs. Offsets are relative to the list item's
+/// `(marker_x, block top)` origin.
+#[derive(Clone, Copy)]
+pub struct MarkerBadge {
+    pub fill: rgb::Color,
+    /// Circle diameter in points.
+    pub diameter: f32,
+    /// Circle-centre x, measured from `marker_x`.
+    pub center_dx: f32,
+    /// Circle-centre y, measured from the block's top y.
+    pub center_dy: f32,
+}
+
 // `ListItem.marker` is a `Layout<rgb::Color>` (~333 bytes), much larger
 // than other variants. Boxing it would force pagination/emit to chase a
 // pointer for every list bullet — net loss for typical list-heavy docs.
@@ -553,6 +569,9 @@ pub enum BlockDraw {
         marker_x: f32,
         body: Vec<Block>,
         ordered: bool,
+        /// When set, the marker is drawn centred inside a filled circle
+        /// instead of as plain inline text.
+        badge: Option<MarkerBadge>,
     },
     /// A pre-decoded raster image, drawn at `(x, y_top)` with the given
     /// display size. `caption` is used for the List of Figures.
@@ -874,6 +893,9 @@ pub struct LayoutCtx<'a> {
     /// `style.heading_numbering.enabled`. A heading at level L bumps
     /// `counters[L-1]` and zeroes every deeper level.
     pub heading_counters: [u32; 6],
+    /// Current ordered/unordered list nesting depth (0 at the outermost
+    /// list). Drives depth-cycled ordered numbering (`1.` → `a.` → `i.`).
+    pub list_depth: usize,
 }
 
 impl<'a> LayoutCtx<'a> {
@@ -1691,15 +1713,34 @@ fn layout_list(
         let RenderableTreeNode::Tag(item_tag) = item_node else {
             continue;
         };
+        let ordered = matches!(kind, ListKind::Ordered);
+        let badge_on = ordered && ctx.style.list_marker.badge;
         let marker_text = match kind {
             ListKind::Unordered => "•".to_string(),
-            ListKind::Ordered => format!("{}.", idx + 1),
+            ListKind::Ordered => {
+                let seq = ctx.style.list_marker.sequence_for_depth(ctx.list_depth);
+                let label = format_ordered_marker(idx + 1, seq);
+                // A badge delimits the marker visually, so the trailing
+                // dot is dropped in that mode.
+                if badge_on { label } else { format!("{label}.") }
+            }
+        };
+        // Inside a badge the marker uses the badge text colour; otherwise
+        // it inherits the body text colour.
+        let marker_color = if badge_on {
+            ctx.style
+                .list_marker
+                .badge_text_color
+                .unwrap_or(ctx.style.text_color)
+                .into()
+        } else {
+            ctx.style.text_color.into()
         };
         let marker_style = TextStyle {
             font_size: ctx.style.body_font_size,
             font_weight: 400.0,
             line_height: ctx.style.body_line_height,
-            color: ctx.style.text_color.into(),
+            color: marker_color,
             font_families: ctx.body_families,
             italic: false,
         };
@@ -1712,9 +1753,33 @@ fn layout_list(
             ctx.layout_cx,
         );
 
-        // Lay out the item body. <li> children may be paragraphs, nested
-        // lists, etc. — recurse normally.
+        // Badge geometry: a circle sized off the body font, centred on
+        // the first line's text middle (baseline less ~half cap-height)
+        // so the marker — drawn at its natural y — lands centred in it.
+        let badge = if badge_on {
+            let fs = ctx.style.body_font_size;
+            let baseline = marker_layout
+                .lines()
+                .next()
+                .map(|l| l.metrics().baseline)
+                .unwrap_or(fs);
+            let diameter = fs * ctx.style.list_marker.badge_scale;
+            Some(MarkerBadge {
+                fill: ctx.style.list_marker.badge_fill.into(),
+                diameter,
+                center_dx: diameter * 0.5,
+                center_dy: baseline - 0.32 * fs,
+            })
+        } else {
+            None
+        };
+
+        // Lay out the item body one nesting level deeper so a nested
+        // ordered list picks the next numbering style. <li> children may
+        // be paragraphs, nested lists, etc. — recurse normally.
+        ctx.list_depth += 1;
         let body = layout_li_body(item_tag, content_x, content_w, ctx);
+        ctx.list_depth -= 1;
         let body_height: f32 = body
             .iter()
             .map(|b| b.height + b.space_after)
@@ -1732,7 +1797,8 @@ fn layout_list(
                 marker_text,
                 marker_x,
                 body,
-                ordered: matches!(kind, ListKind::Ordered),
+                ordered,
+                badge,
             },
             outline: None,
             anchor_id: None,
@@ -1744,6 +1810,64 @@ fn layout_list(
     // No extra space after the whole list (the last item carries its own
     // space_after; behaves consistently with other top-level blocks).
     out
+}
+
+/// Format a 1-based ordered-list position in the given sequence style.
+fn format_ordered_marker(n: usize, seq: MarkerSequence) -> String {
+    match seq {
+        MarkerSequence::Decimal => n.to_string(),
+        MarkerSequence::LowerAlpha => to_alpha(n, false),
+        MarkerSequence::UpperAlpha => to_alpha(n, true),
+        MarkerSequence::LowerRoman => to_roman(n, false),
+        MarkerSequence::UpperRoman => to_roman(n, true),
+    }
+}
+
+/// Spreadsheet-style bijective base-26: 1→a, 26→z, 27→aa, 28→ab, …
+fn to_alpha(mut n: usize, upper: bool) -> String {
+    if n == 0 {
+        return "0".to_string();
+    }
+    let base = if upper { b'A' } else { b'a' };
+    let mut buf = Vec::new();
+    while n > 0 {
+        let rem = (n - 1) % 26;
+        buf.push(base + rem as u8);
+        n = (n - 1) / 26;
+    }
+    buf.reverse();
+    String::from_utf8(buf).unwrap()
+}
+
+/// Roman numerals for 1..=3999; anything outside that classic range
+/// falls back to decimal.
+fn to_roman(mut n: usize, upper: bool) -> String {
+    if n == 0 || n > 3999 {
+        return n.to_string();
+    }
+    const VALS: [(usize, &str); 13] = [
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ];
+    let mut s = String::new();
+    for (v, sym) in VALS {
+        while n >= v {
+            s.push_str(sym);
+            n -= v;
+        }
+    }
+    if upper { s.to_uppercase() } else { s }
 }
 
 /// Layout the contents of one `<li>`. Markdown list items often wrap
@@ -2827,6 +2951,26 @@ mod tests {
         // A new h1 resets h2 and h3.
         assert_eq!(bump_heading_counters(&mut c, 1, 3).as_deref(), Some("2"));
         assert_eq!(bump_heading_counters(&mut c, 2, 3).as_deref(), Some("2.1"));
+    }
+
+    #[test]
+    fn ordered_marker_sequences_format() {
+        use super::super::style::MarkerSequence::*;
+        assert_eq!(format_ordered_marker(1, Decimal), "1");
+        assert_eq!(format_ordered_marker(42, Decimal), "42");
+        // Bijective base-26.
+        assert_eq!(format_ordered_marker(1, LowerAlpha), "a");
+        assert_eq!(format_ordered_marker(26, LowerAlpha), "z");
+        assert_eq!(format_ordered_marker(27, LowerAlpha), "aa");
+        assert_eq!(format_ordered_marker(28, LowerAlpha), "ab");
+        assert_eq!(format_ordered_marker(2, UpperAlpha), "B");
+        // Roman numerals.
+        assert_eq!(format_ordered_marker(4, LowerRoman), "iv");
+        assert_eq!(format_ordered_marker(9, LowerRoman), "ix");
+        assert_eq!(format_ordered_marker(2026, LowerRoman), "mmxxvi");
+        assert_eq!(format_ordered_marker(14, UpperRoman), "XIV");
+        // Out-of-range roman falls back to decimal.
+        assert_eq!(format_ordered_marker(4000, LowerRoman), "4000");
     }
 
     #[test]

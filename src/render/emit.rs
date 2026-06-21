@@ -519,7 +519,32 @@ fn emit_block(
             marker_x,
             body,
             ordered: _,
+            badge,
         } => {
+            // When the marker is badged, draw its filled circle first
+            // (so the glyphs sit on top) and centre the marker over the
+            // circle; otherwise the marker is left-aligned at marker_x.
+            let marker_origin_x = if let Some(b) = badge {
+                let cx = *marker_x + b.center_dx;
+                let cy = y + b.center_dy;
+                // The circle is decorative — the marker glyph (tagged Lbl
+                // below) carries the meaning — so mark it an Artifact.
+                if tags.enabled {
+                    surface.start_tagged(ContentTag::Artifact(ArtifactType::Other));
+                }
+                fill_circle(surface, cx, cy, b.diameter * 0.5, b.fill);
+                if tags.enabled {
+                    surface.end_tagged();
+                }
+                let marker_w = marker
+                    .lines()
+                    .next()
+                    .map(|l| l.metrics().advance)
+                    .unwrap_or(0.0);
+                cx - marker_w * 0.5
+            } else {
+                *marker_x
+            };
             // Marker on the first body line's baseline. Tag as Lbl
             // (label) so accessibility tools know it's the marker.
             let marker_lines = marker.lines().count();
@@ -532,7 +557,7 @@ fn emit_block(
                 surface,
                 marker,
                 marker_text,
-                *marker_x,
+                marker_origin_x,
                 y,
                 font_cache,
                 0..marker_lines,
@@ -671,6 +696,34 @@ fn line(surface: &mut krilla::surface::Surface<'_>, x0: f32, y0: f32, x1: f32, y
     pb.move_to(x0, y0);
     pb.line_to(x1, y1);
     let path = pb.finish().unwrap();
+    surface.draw_path(&path);
+}
+
+/// Fill a circle of radius `r` centred at `(cx, cy)`, approximated by
+/// four cubic-Bézier quadrants (control-point factor κ ≈ 0.5523). Used
+/// for ordered-list marker badges.
+fn fill_circle(
+    surface: &mut krilla::surface::Surface<'_>,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    color: rgb::Color,
+) {
+    const K: f32 = 0.552_284_8;
+    let o = K * r;
+    let mut pb = PathBuilder::new();
+    pb.move_to(cx, cy - r);
+    pb.cubic_to(cx + o, cy - r, cx + r, cy - o, cx + r, cy);
+    pb.cubic_to(cx + r, cy + o, cx + o, cy + r, cx, cy + r);
+    pb.cubic_to(cx - o, cy + r, cx - r, cy + o, cx - r, cy);
+    pb.cubic_to(cx - r, cy - o, cx - o, cy - r, cx, cy - r);
+    pb.close();
+    let path = pb.finish().unwrap();
+    surface.set_fill(Some(Fill {
+        paint: color.into(),
+        opacity: NormalizedF32::ONE,
+        rule: Default::default(),
+    }));
     surface.draw_path(&path);
 }
 

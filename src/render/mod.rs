@@ -225,6 +225,7 @@ pub fn render_pdf_with(
             body_families,
             hyphenator: hyphenator.as_ref(),
             heading_counters: [0; 6],
+            list_depth: 0,
         };
         let blocks = block::layout_document(root, &mut lctx);
         (blocks, lctx.footnotes)

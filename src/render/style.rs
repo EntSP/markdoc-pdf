@@ -389,6 +389,7 @@ pub struct Style {
     pub list_indent: f32,
     pub list_item_space_after: f32,
     pub list_marker_gap: f32,
+    pub list_marker: ListMarkerStyle,
 
     // ── Block quotes ──────────────────────────────────────────────────
     pub blockquote_indent: f32,
@@ -514,6 +515,7 @@ impl Default for Style {
             list_indent: 24.0,
             list_item_space_after: 4.0,
             list_marker_gap: 8.0,
+            list_marker: ListMarkerStyle::default(),
             blockquote_indent: 24.0,
             blockquote_bar_width: 3.0,
             blockquote_bar_color: ColorRgb::new(200, 205, 215),
@@ -755,6 +757,71 @@ impl Default for CoverPageStyle {
             detail_line_gap: 3.0,
             detail_color: None,
             blank_page_after: false,
+        }
+    }
+}
+
+/// Ordered-list numbering style for one nesting level. Mirrors the CSS
+/// `list-style-type` values of the same name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MarkerSequence {
+    /// 1, 2, 3, …
+    Decimal,
+    /// a, b, c, … z, aa, ab, …
+    LowerAlpha,
+    /// A, B, C, …
+    UpperAlpha,
+    /// i, ii, iii, iv, …
+    LowerRoman,
+    /// I, II, III, IV, …
+    UpperRoman,
+}
+
+/// Styling for list-item markers. Bullets (unordered lists) are
+/// unaffected; these knobs shape ordered-list numbering and the
+/// optional circular badge treatment.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ListMarkerStyle {
+    /// Ordered-list numbering style per nesting depth — index 0 is the
+    /// outermost list, deeper levels cycle through the list (wrapping
+    /// when the nesting runs deeper than the list). Empty means decimal
+    /// at every depth, e.g. `["decimal", "lower-alpha", "lower-roman"]`
+    /// gives `1.` → `a.` → `i.` as lists nest.
+    pub ordered_sequences: Vec<MarkerSequence>,
+    /// Draw each ordered marker centred inside a filled circle. The
+    /// trailing `.` is dropped — the badge itself delimits the marker.
+    pub badge: bool,
+    /// Badge fill colour.
+    pub badge_fill: ColorRgb,
+    /// Marker text colour inside a badge. Defaults to the body text
+    /// colour when unset.
+    pub badge_text_color: Option<ColorRgb>,
+    /// Badge diameter as a multiple of the marker font size.
+    pub badge_scale: f32,
+}
+
+impl Default for ListMarkerStyle {
+    fn default() -> Self {
+        Self {
+            ordered_sequences: Vec::new(),
+            badge: false,
+            badge_fill: ColorRgb::new(223, 227, 232),
+            badge_text_color: None,
+            badge_scale: 1.7,
+        }
+    }
+}
+
+impl ListMarkerStyle {
+    /// The numbering style to use at the given nesting depth (0 = the
+    /// outermost ordered list).
+    pub fn sequence_for_depth(&self, depth: usize) -> MarkerSequence {
+        if self.ordered_sequences.is_empty() {
+            MarkerSequence::Decimal
+        } else {
+            self.ordered_sequences[depth % self.ordered_sequences.len()]
         }
     }
 }
@@ -1319,6 +1386,30 @@ font_size = 32.0
         assert_eq!(horizontal.table_borders, TableBorders::Horizontal);
         let none = Style::from_toml_str("table_borders = \"none\"").unwrap();
         assert_eq!(none.table_borders, TableBorders::None);
+    }
+
+    #[test]
+    fn list_marker_badge_and_sequences() {
+        // Defaults: no badge, decimal at every depth.
+        let d = Style::default().list_marker;
+        assert!(!d.badge);
+        assert_eq!(d.sequence_for_depth(0), MarkerSequence::Decimal);
+        assert_eq!(d.sequence_for_depth(3), MarkerSequence::Decimal);
+
+        let toml = r#"
+[list_marker]
+badge = true
+ordered_sequences = ["decimal", "lower-alpha", "lower-roman"]
+badge_fill = [223, 227, 232]
+"#;
+        let lm = Style::from_toml_str(toml).unwrap().list_marker;
+        assert!(lm.badge);
+        assert_eq!(lm.badge_fill, ColorRgb::new(223, 227, 232));
+        // Depth cycles through the configured sequence and wraps.
+        assert_eq!(lm.sequence_for_depth(0), MarkerSequence::Decimal);
+        assert_eq!(lm.sequence_for_depth(1), MarkerSequence::LowerAlpha);
+        assert_eq!(lm.sequence_for_depth(2), MarkerSequence::LowerRoman);
+        assert_eq!(lm.sequence_for_depth(3), MarkerSequence::Decimal);
     }
 
     #[test]

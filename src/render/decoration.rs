@@ -258,7 +258,10 @@ fn draw_logo(
     surface.pop();
 }
 
-fn decode_logo(src: &str, assets: &dyn AssetResolver) -> Option<DecodedLogo> {
+/// Decode an image / SVG asset into a [`DecodedLogo`] via the resolver.
+/// Shared by the logo, watermark, and callout-icon paths. Returns
+/// `None` on fetch or decode failure.
+pub(super) fn decode_logo(src: &str, assets: &dyn AssetResolver) -> Option<DecodedLogo> {
     let bytes = assets.fetch(src).ok()?;
     let format = sniff_format(&bytes);
     match format {

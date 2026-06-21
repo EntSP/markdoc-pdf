@@ -7,7 +7,7 @@ use krilla::geom::{PathBuilder, Point, Size, Transform};
 use krilla::num::NormalizedF32;
 use krilla::paint::{Fill, Stroke};
 use krilla::tagging::{
-    ContentTag, Identifier, Node as TagNode, SpanTag, Tag, TagGroup, TagKind, kind,
+    ArtifactType, ContentTag, Identifier, Node as TagNode, SpanTag, Tag, TagGroup, TagKind, kind,
 };
 use krilla::text::Font;
 use krilla_svg::{SurfaceExt, SvgSettings};
@@ -389,6 +389,7 @@ fn emit_block(
             accent_width,
             padding,
             children,
+            icon,
         } => {
             let box_top = y;
             let box_bottom = y + block.height;
@@ -446,7 +447,33 @@ fn emit_block(
                 surface.draw_path(&path);
             }
 
-            // 4. Children, offset by padding (children's x already
+            // 4. Optional icon at the box's top-left content corner.
+            //    Marked as a decorative Artifact so assistive tech
+            //    ignores it — the bold label carries the meaning. Drawn
+            //    before the children; their x already clears the gutter.
+            if let Some(icon) = icon
+                && let Some(size) = Size::from_wh(icon.size, icon.size)
+            {
+                let icon_y = box_top + *padding;
+                if tags.enabled {
+                    surface.start_tagged(ContentTag::Artifact(ArtifactType::Other));
+                }
+                surface.push_transform(&Transform::from_translate(icon.x, icon_y));
+                match &icon.decoded {
+                    super::decoration::DecodedLogo::Raster(img) => {
+                        surface.draw_image(img.clone(), size);
+                    }
+                    super::decoration::DecodedLogo::Svg(tree) => {
+                        surface.draw_svg(tree.as_ref(), size, SvgSettings::default());
+                    }
+                }
+                surface.pop();
+                if tags.enabled {
+                    surface.end_tagged();
+                }
+            }
+
+            // 5. Children, offset by padding (children's x already
             //    accounts for layout-time x-shift; padding here shifts y).
             let _ = padding; // padding-x is baked into children x at layout time
             emit_blocks(

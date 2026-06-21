@@ -480,6 +480,18 @@ fn make_table_block(
     }
 }
 
+/// A decoded icon drawn at a [`BlockDraw::BoxedGroup`]'s top-left
+/// content corner. Used by callouts; the box's children are laid out
+/// indented past `size` so they clear it.
+#[derive(Clone)]
+pub struct BoxedGroupIcon {
+    pub decoded: super::decoration::DecodedLogo,
+    /// Absolute x of the icon's left edge (page-local).
+    pub x: f32,
+    /// Square draw size in points.
+    pub size: f32,
+}
+
 // `ListItem.marker` is a `Layout<rgb::Color>` (~333 bytes), much larger
 // than other variants. Boxing it would force pagination/emit to chase a
 // pointer for every list bullet — net loss for typical list-heavy docs.
@@ -500,7 +512,8 @@ pub enum BlockDraw {
     },
     /// A box decoration: draws a background/border around the children,
     /// with optional left accent stripe, then renders the children inside
-    /// (offset by `padding`).
+    /// (offset by `padding`). An optional `icon` is drawn at the box's
+    /// top-left content corner (children are laid out indented past it).
     BoxedGroup {
         x: f32,
         width: f32,
@@ -510,6 +523,7 @@ pub enum BlockDraw {
         accent_width: f32,
         padding: f32,
         children: Vec<Block>,
+        icon: Option<BoxedGroupIcon>,
     },
     /// A list item: marker drawn at `marker_x`. Body blocks are
     /// pre-positioned at the indented content x (baked in at layout
@@ -1771,6 +1785,7 @@ fn layout_blockquote(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
             accent_width: ctx.style.blockquote_bar_width,
             padding: 0.0, // children already shifted via inner_x
             children,
+            icon: None,
         },
         outline: None,
         anchor_id: None,
@@ -1868,6 +1883,7 @@ fn layout_code_block(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
             accent_width: 0.0,
             padding,
             children: vec![inner_block],
+            icon: None,
         },
         outline: None,
         anchor_id: None,
@@ -1962,18 +1978,51 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
     let inner_x = x + accent_w + padding;
     let inner_w = width - accent_w - 2.0 * padding;
 
+    // Decode the optional icon once (cached by the resolver). When
+    // present, the label and body are indented past an icon gutter so
+    // they sit beside it rather than under it.
+    let icon = if cs.icon.trim().is_empty() {
+        None
+    } else {
+        super::decoration::decode_logo(cs.icon.trim(), ctx.assets).map(|decoded| BoxedGroupIcon {
+            decoded,
+            x: inner_x,
+            size: ctx.style.callout_icon_size,
+        })
+    };
+    let icon_gutter = icon
+        .as_ref()
+        .map(|i| i.size + ctx.style.callout_icon_gap)
+        .unwrap_or(0.0);
+    let content_x = inner_x + icon_gutter;
+    let content_w = inner_w - icon_gutter;
+
+    // Optional bold label as the first child line.
+    let mut children: Vec<Block> = Vec::new();
+    if !cs.label.trim().is_empty() {
+        children.push(build_callout_label_block(
+            cs.label.trim(),
+            content_x,
+            content_w,
+            cs.label_color.unwrap_or(ctx.style.text_color).into(),
+            ctx,
+        ));
+    }
+
     // markdoc's parser doesn't wrap a callout's text content in a `<p>` —
     // body children come through as raw `Scalar`s and inline tags. Group
     // consecutive inline children into synthetic paragraphs so they
     // actually render; block-level tags (lists, tables, nested callouts)
     // are still laid out individually.
     let wrapped = wrap_inline_runs_in_paragraphs(&tag.children);
-    let children = layout_children(&wrapped, inner_x, inner_w, ctx);
-    let inner_height: f32 = children
+    children.extend(layout_children(&wrapped, content_x, content_w, ctx));
+    let content_height: f32 = children
         .iter()
         .map(|b| b.height + b.space_after)
         .sum::<f32>()
         - children.last().map(|b| b.space_after).unwrap_or(0.0);
+    // The box must clear both the content and (if taller) the icon.
+    let inner_height = content_height.max(icon.as_ref().map(|i| i.size).unwrap_or(0.0));
 
     vec![Block {
         height: inner_height + 2.0 * padding,
@@ -1987,12 +2036,43 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
             accent_width: accent_w,
             padding,
             children,
+            icon,
         },
         outline: None,
         anchor_id: None,
 
         tag_role: None,
     }]
+}
+
+/// Build the bold single-line label block (e.g. `WARNING`) that heads a
+/// callout. Positioned at `x` with the given colour.
+fn build_callout_label_block(
+    label: &str,
+    x: f32,
+    width: f32,
+    color: rgb::Color,
+    ctx: &mut LayoutCtx<'_>,
+) -> Block {
+    let style = TextStyle {
+        font_size: ctx.style.callout_label_size,
+        font_weight: 700.0,
+        line_height: ctx.style.body_line_height,
+        color,
+        font_families: ctx.body_families,
+        italic: false,
+    };
+    let layout = build_layout(label, &[], &style, width, ctx.font_cx, ctx.layout_cx);
+    let slice = TextSlice::whole(layout, label.to_string(), Vec::new(), x);
+    let height = slice.height();
+    Block {
+        height,
+        space_after: ctx.style.callout_label_size * 0.4,
+        draw: BlockDraw::Text(slice),
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }
 }
 
 // ── Horizontal rule ─────────────────────────────────────────────────────

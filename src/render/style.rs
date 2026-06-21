@@ -161,6 +161,17 @@ pub struct CalloutStyle {
     /// Left accent bar colour. Drawn as a thicker stripe on the left side
     /// of the box for visual emphasis.
     pub accent: ColorRgb,
+    /// Optional bold heading drawn as the first line of the box (e.g.
+    /// `"WARNING"`). Empty / unset renders no label, preserving the
+    /// plain-box behaviour. Typically uppercase.
+    pub label: String,
+    /// Colour for the `label`. Defaults to the document body text
+    /// colour; set it (e.g. to the accent) to tint the heading.
+    pub label_color: Option<ColorRgb>,
+    /// Optional icon asset (any `AssetResolver` URI / path) drawn at the
+    /// box's top-left, with the label and body indented past it. Empty /
+    /// unset renders no icon.
+    pub icon: String,
 }
 
 impl Default for CalloutStyle {
@@ -169,6 +180,9 @@ impl Default for CalloutStyle {
             background: ColorRgb::new(247, 248, 250),
             border: ColorRgb::new(220, 225, 230),
             accent: ColorRgb::new(120, 130, 145),
+            label: String::new(),
+            label_color: None,
+            icon: String::new(),
         }
     }
 }
@@ -246,41 +260,51 @@ pub struct CalloutStyles {
 
 impl Default for CalloutStyles {
     fn default() -> Self {
+        // Colours per kind; `label` / `label_color` / `icon` inherit the
+        // label-less, icon-less defaults (`..CalloutStyle::default()`) so
+        // existing themes render unchanged until they opt in.
         Self {
             note: CalloutStyle {
                 background: ColorRgb::new(247, 248, 250),
                 border: ColorRgb::new(220, 225, 230),
                 accent: ColorRgb::new(120, 130, 145),
+                ..CalloutStyle::default()
             },
             info: CalloutStyle {
                 background: ColorRgb::new(232, 244, 253),
                 border: ColorRgb::new(180, 213, 240),
                 accent: ColorRgb::new(54, 130, 200),
+                ..CalloutStyle::default()
             },
             warning: CalloutStyle {
                 background: ColorRgb::new(255, 247, 230),
                 border: ColorRgb::new(252, 211, 166),
                 accent: ColorRgb::new(217, 119, 6),
+                ..CalloutStyle::default()
             },
             caution: CalloutStyle {
                 background: ColorRgb::new(255, 247, 230),
                 border: ColorRgb::new(252, 211, 166),
                 accent: ColorRgb::new(217, 119, 6),
+                ..CalloutStyle::default()
             },
             danger: CalloutStyle {
                 background: ColorRgb::new(254, 232, 232),
                 border: ColorRgb::new(248, 187, 187),
                 accent: ColorRgb::new(204, 51, 51),
+                ..CalloutStyle::default()
             },
             success: CalloutStyle {
                 background: ColorRgb::new(232, 250, 240),
                 border: ColorRgb::new(168, 220, 188),
                 accent: ColorRgb::new(46, 160, 100),
+                ..CalloutStyle::default()
             },
             notice: CalloutStyle {
                 background: ColorRgb::new(245, 240, 255),
                 border: ColorRgb::new(214, 198, 240),
                 accent: ColorRgb::new(120, 80, 200),
+                ..CalloutStyle::default()
             },
         }
     }
@@ -355,6 +379,12 @@ pub struct Style {
     pub callout_accent_width: f32,
     pub callout_styles: CalloutStyles,
     pub callout_space_after: f32,
+    /// Font size (pt) for a callout's bold label line.
+    pub callout_label_size: f32,
+    /// Square draw size (pt) for a callout's icon.
+    pub callout_icon_size: f32,
+    /// Horizontal gap (pt) between the icon and the label / body column.
+    pub callout_icon_gap: f32,
 
     // ── Horizontal rule ───────────────────────────────────────────────
     pub rule_color: ColorRgb,
@@ -459,6 +489,9 @@ impl Default for Style {
             callout_accent_width: 4.0,
             callout_styles: CalloutStyles::default(),
             callout_space_after: 12.0,
+            callout_label_size: 11.0,
+            callout_icon_size: 20.0,
+            callout_icon_gap: 10.0,
             rule_color: ColorRgb::new(200, 205, 215),
             rule_thickness: 0.75,
             rule_space_around: 12.0,

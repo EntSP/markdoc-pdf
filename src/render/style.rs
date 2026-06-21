@@ -453,6 +453,9 @@ pub struct Style {
 
     // ── Tables ────────────────────────────────────────────────────────
     pub table_column_sizing: TableColumnSizing,
+    /// Which rules the table draws: a full `grid` (default), only
+    /// `horizontal` row separators, or `none`.
+    pub table_borders: TableBorders,
     pub table_cell_padding: f32,
     pub table_border_color: ColorRgb,
     pub table_border_thickness: f32,
@@ -542,6 +545,7 @@ impl Default for Style {
             table_caption_prefix: "Table".to_string(),
             caption_separator: ":".to_string(),
             table_column_sizing: TableColumnSizing::Auto,
+            table_borders: TableBorders::Grid,
             table_cell_padding: 6.0,
             table_border_color: ColorRgb::new(210, 215, 225),
             table_border_thickness: 0.5,
@@ -892,6 +896,22 @@ pub enum TableColumnSizing {
     #[default]
     Auto,
     Equal,
+}
+
+/// Which rules a table draws.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TableBorders {
+    /// Full grid — outer box plus every row and column separator (the
+    /// default).
+    #[default]
+    Grid,
+    /// Horizontal row separators only; no verticals or outer box. The
+    /// clean "ruled" look for key-value / metadata tables.
+    Horizontal,
+    /// No rules at all — cells are separated by whitespace (and the
+    /// optional header fill) only.
+    None,
 }
 
 /// Generic auto-generated list section: List of Figures, List of
@@ -1277,6 +1297,17 @@ font_size = 32.0
         assert_eq!(s.heading.h1.font_size, 32.0);
         // Other heading levels keep defaults.
         assert_eq!(s.heading.h2.font_size, 21.0);
+    }
+
+    #[test]
+    fn table_borders_default_and_override() {
+        // Defaults to a full grid.
+        assert_eq!(Style::default().table_borders, TableBorders::Grid);
+        // snake_case values parse from a top-level key.
+        let horizontal = Style::from_toml_str("table_borders = \"horizontal\"").unwrap();
+        assert_eq!(horizontal.table_borders, TableBorders::Horizontal);
+        let none = Style::from_toml_str("table_borders = \"none\"").unwrap();
+        assert_eq!(none.table_borders, TableBorders::None);
     }
 
     #[test]

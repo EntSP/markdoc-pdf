@@ -15,6 +15,7 @@ use parley::Layout;
 
 use super::block::{Block, BlockDraw};
 use super::inline::LinkRange;
+use super::style::TableBorders;
 use super::text::{emit_layout, emit_layout_segmented};
 
 /// `(x, y, width, height)` for one line of a link's bounding region,
@@ -557,6 +558,7 @@ fn emit_block(
             header_bg,
             border_color,
             border_thickness,
+            border_style,
             caption: _,
         } => {
             let total_width: f32 = column_widths.iter().sum::<f32>()
@@ -617,34 +619,41 @@ fn emit_block(
             }
             tags.leave(); // Table
 
-            // 3. Borders: outer rect + horizontal row separators + vertical
-            //    column separators. Drawn last so they sit on top of any
-            //    header background that bleeds.
-            let stroke = Stroke {
-                paint: (*border_color).into(),
-                width: *border_thickness,
-                opacity: NormalizedF32::ONE,
-                ..Default::default()
-            };
-            surface.set_stroke(Some(stroke));
+            // 3. Borders. The rules drawn depend on the table's border
+            //    style: `Grid` draws the outer rect plus horizontal row and
+            //    vertical column separators; `Horizontal` keeps only the row
+            //    separators (no verticals); `None` draws nothing. Drawn last
+            //    so they sit on top of any header background that bleeds.
+            if !matches!(border_style, TableBorders::None) {
+                let stroke = Stroke {
+                    paint: (*border_color).into(),
+                    width: *border_thickness,
+                    opacity: NormalizedF32::ONE,
+                    ..Default::default()
+                };
+                surface.set_stroke(Some(stroke));
 
-            // Horizontals.
-            let mut h_y = y + *border_thickness * 0.5;
-            line(surface, *x, h_y, *x + total_width, h_y);
-            for row in rows {
-                h_y += row.height + *border_thickness;
+                // Horizontals (drawn for both `Grid` and `Horizontal`).
+                let mut h_y = y + *border_thickness * 0.5;
                 line(surface, *x, h_y, *x + total_width, h_y);
+                for row in rows {
+                    h_y += row.height + *border_thickness;
+                    line(surface, *x, h_y, *x + total_width, h_y);
+                }
+
+                // Verticals (`Grid` only).
+                if matches!(border_style, TableBorders::Grid) {
+                    let top = y;
+                    let bottom = y + total_height;
+                    let mut v_x = *x + *border_thickness * 0.5;
+                    line(surface, v_x, top, v_x, bottom);
+                    for col_w in column_widths {
+                        v_x += *col_w + *border_thickness;
+                        line(surface, v_x, top, v_x, bottom);
+                    }
+                }
+                surface.set_stroke(None);
             }
-            // Verticals.
-            let top = y;
-            let bottom = y + total_height;
-            let mut v_x = *x + *border_thickness * 0.5;
-            line(surface, v_x, top, v_x, bottom);
-            for col_w in column_widths {
-                v_x += *col_w + *border_thickness;
-                line(surface, v_x, top, v_x, bottom);
-            }
-            surface.set_stroke(None);
         }
     }
 }

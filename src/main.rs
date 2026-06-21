@@ -10,11 +10,12 @@ use markdoc::{
     Context, evaluate_conditionals, parse,
     partials::{FsPartialResolver, expand_partials},
     resolve_crossrefs, transform_with_context,
-    types::Config,
+    types::{Config, Scalar},
 };
 use markdoc_pdf::assets::FsAssetResolver;
 use markdoc_pdf::dates;
 use markdoc_pdf::render::{RenderContext, Style, render_pdf_with};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -147,6 +148,29 @@ fn run(args: &Args) -> Result<(), AppError> {
         .as_ref()
         .and_then(|fm| fm.first_release_date.as_deref())
         .map(dates::iso_to_date_only);
+
+    // Expose the document's own frontmatter as template variables for
+    // header/footer and cover-page templates (`{version}`, `{language}`,
+    // … — whatever the author wrote). The renderer stays domain-agnostic:
+    // every scalar frontmatter field is surfaced under its authored key,
+    // with no hard-coded field names here. Unset fields simply never
+    // appear, so their `{name}` token stays literal (and detail lines
+    // that resolve to nothing are skipped).
+    let mut vars: HashMap<String, String> = HashMap::new();
+    collect_frontmatter_vars(&doc, &mut vars);
+    // Pre-compute the copyright year span (a generic derived value, not a
+    // frontmatter field): a single year when the first-release year
+    // equals — or is missing for — the current year, otherwise
+    // `first–current`.
+    let first_year = fm_opt
+        .as_ref()
+        .and_then(|fm| fm.first_release_date.as_deref())
+        .and_then(dates::year_of);
+    vars.insert(
+        "copyright_years".to_string(),
+        dates::copyright_year_span(first_year, dates::current_year()),
+    );
+
     let render_ctx = RenderContext {
         title: fm_opt
             .as_ref()
@@ -159,6 +183,7 @@ fn run(args: &Args) -> Result<(), AppError> {
         producer: Some(format!("markdoc-pdf {}", env!("CARGO_PKG_VERSION"))),
         creation_date,
         date_string,
+        vars,
     };
 
     let pdf = render_pdf_with(&rendered, &style, &resolver, &render_ctx);
@@ -171,6 +196,37 @@ fn run(args: &Args) -> Result<(), AppError> {
         args.input.display()
     );
     Ok(())
+}
+
+/// Surface every scalar frontmatter field as a template variable keyed
+/// by its authored name. Nested values (arrays / objects) and empty
+/// strings are skipped — they have no single sensible string form. The
+/// renderer never sees the field *names*, so it stays domain-agnostic:
+/// whatever the document declares (`version`, `language`, a custom
+/// `productLine`, …) becomes referenceable as `{name}`.
+fn collect_frontmatter_vars(doc: &markdoc::ast::Node, vars: &mut HashMap<String, String>) {
+    let Some(Scalar::Object(map)) = doc.attributes.get("frontmatter") else {
+        return;
+    };
+    for (key, value) in map {
+        if let Some(s) = scalar_to_template_string(value) {
+            vars.insert(key.clone(), s);
+        }
+    }
+}
+
+/// Render a scalar as a flat template string. Whole-number floats print
+/// without a fractional part (YAML integers arrive as `f64`). Non-scalar
+/// or empty values yield `None`.
+fn scalar_to_template_string(value: &Scalar) -> Option<String> {
+    match value {
+        Scalar::String(s) if !s.trim().is_empty() => Some(s.clone()),
+        Scalar::String(_) => None,
+        Scalar::Number(n) if n.is_finite() && n.fract() == 0.0 => Some(format!("{}", *n as i64)),
+        Scalar::Number(n) => Some(n.to_string()),
+        Scalar::Boolean(b) => Some(b.to_string()),
+        Scalar::Null | Scalar::Array(_) | Scalar::Object(_) => None,
+    }
 }
 
 /// Writer-facing error type. Each variant carries the file path that
@@ -268,3 +324,48 @@ impl std::error::Error for AppError {}
 // `Path` import suppression — only used in trait bound.
 #[allow(dead_code)]
 fn _unused(_: &Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scalar_strings_and_bools() {
+        assert_eq!(
+            scalar_to_template_string(&Scalar::String("6.1".into())).as_deref(),
+            Some("6.1")
+        );
+        // Blank / whitespace-only strings are dropped.
+        assert_eq!(
+            scalar_to_template_string(&Scalar::String("  ".into())),
+            None
+        );
+        assert_eq!(
+            scalar_to_template_string(&Scalar::Boolean(true)).as_deref(),
+            Some("true")
+        );
+    }
+
+    #[test]
+    fn whole_number_floats_print_as_integers() {
+        // YAML integers arrive as f64 — render `75371702`, not `75371702.0`.
+        assert_eq!(
+            scalar_to_template_string(&Scalar::Number(75371702.0)).as_deref(),
+            Some("75371702")
+        );
+        assert_eq!(
+            scalar_to_template_string(&Scalar::Number(2.5)).as_deref(),
+            Some("2.5")
+        );
+    }
+
+    #[test]
+    fn non_scalar_values_are_skipped() {
+        assert_eq!(scalar_to_template_string(&Scalar::Null), None);
+        assert_eq!(scalar_to_template_string(&Scalar::Array(vec![])), None);
+        assert_eq!(
+            scalar_to_template_string(&Scalar::Object(std::collections::HashMap::new())),
+            None
+        );
+    }
+}

@@ -611,6 +611,18 @@ pub enum LogoPosition {
     BelowTitle,
 }
 
+/// Horizontal alignment of the cover-page text blocks.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverAlign {
+    /// Centred in the body column (the default).
+    #[default]
+    Center,
+    /// Flush against the left margin — fits a "title page" look where
+    /// the title and metadata stack at the top-left.
+    Left,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CoverPageStyle {
@@ -641,6 +653,23 @@ pub struct CoverPageStyle {
     pub show_date: bool,
     pub date_font_size: f32,
     pub text_color: ColorRgb,
+    /// Horizontal alignment of every cover text block (title, subtitle,
+    /// detail lines, authors, date). Defaults to centred.
+    pub align: CoverAlign,
+    /// Extra metadata lines rendered under the title, each a template
+    /// string (`{title}` / `{description}` / `{date}` / any
+    /// `RenderContext` var). Use for "Date: {date}", "Version:
+    /// {version}", etc. A line whose substitution is empty is skipped.
+    pub detail_lines: Vec<String>,
+    /// Font size for `detail_lines`.
+    pub detail_font_size: f32,
+    /// Gap below the title before the detail lines.
+    pub title_to_detail_gap: f32,
+    /// Vertical gap between consecutive detail lines.
+    pub detail_line_gap: f32,
+    /// Colour for `detail_lines`. Defaults to `text_color` when unset;
+    /// typically a muted grey.
+    pub detail_color: Option<ColorRgb>,
     /// When `true`, insert a fully blank page directly after the
     /// cover page so the body content starts on page 3 — a recto in
     /// double-sided printing. Useful for printed reports / books;
@@ -667,6 +696,12 @@ impl Default for CoverPageStyle {
             show_date: true,
             date_font_size: 11.0,
             text_color: ColorRgb::new(20, 20, 20),
+            align: CoverAlign::Center,
+            detail_lines: Vec::new(),
+            detail_font_size: 11.0,
+            title_to_detail_gap: 14.0,
+            detail_line_gap: 3.0,
+            detail_color: None,
             blank_page_after: false,
         }
     }

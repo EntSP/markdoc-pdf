@@ -7,10 +7,10 @@
 //! resulting block list is prepended to the body and ends with a
 //! `PageBreak` so the first body block lands on page 2.
 //!
-//! Centred horizontally via parley alignment; vertical position is
-//! controlled by the configured `top_margin`. Stays fully accessible
-//! under PDF/UA — every text block is a normal `P`/`Hn` and the logo
-//! sits inside a `Figure` group.
+//! Horizontal alignment is configurable (centred or left); vertical
+//! position is controlled by the configured `top_margin`. Stays fully
+//! accessible under PDF/UA — every text block is a normal `P`/`Hn` and
+//! the logo sits inside a `Figure` group.
 
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ use crate::assets::{AssetResolver, MediaFormat, sniff_format};
 
 use super::RenderContext;
 use super::block::{Block, BlockDraw, TextSlice};
-use super::style::{LogoPosition, Style};
+use super::style::{CoverAlign, LogoPosition, Style};
 use super::text::{TextStyle, build_layout_aligned};
 
 /// Build the synthesised cover-page block list. Returns an empty
@@ -47,6 +47,7 @@ pub fn build_coverpage_blocks(
     let mut out = Vec::new();
     let body_left = style.margin_x;
     let column_w = style.page_width - 2.0 * style.margin_x;
+    let align = cover_alignment(coverpage.align);
 
     // Top spacer.
     if coverpage.top_margin > 0.0 {
@@ -74,13 +75,50 @@ pub fn build_coverpage_blocks(
 
     // Title.
     if !render_ctx.title.is_empty() {
-        out.push(centered_text_block(
+        out.push(cover_text_block(
             &render_ctx.title,
             body_left,
             column_w,
             coverpage.title_font_size,
             700.0,
             coverpage.text_color.into(),
+            align,
+            body_families,
+            style.body_line_height,
+            font_cx,
+            layout_cx,
+        ));
+    }
+
+    // Detail lines (e.g. "Date: {date}", "Version: {version}"). Each is
+    // a template; lines that substitute to nothing are skipped.
+    let detail_color = coverpage
+        .detail_color
+        .unwrap_or(coverpage.text_color)
+        .into();
+    let mut first_detail = true;
+    for line_tpl in &coverpage.detail_lines {
+        let line = substitute(line_tpl, render_ctx, date_str);
+        if line.trim().is_empty() {
+            continue;
+        }
+        let gap = if first_detail {
+            coverpage.title_to_detail_gap
+        } else {
+            coverpage.detail_line_gap
+        };
+        if gap > 0.0 {
+            out.push(spacer_block(body_left, gap));
+        }
+        first_detail = false;
+        out.push(cover_text_block(
+            &line,
+            body_left,
+            column_w,
+            coverpage.detail_font_size,
+            400.0,
+            detail_color,
+            align,
             body_families,
             style.body_line_height,
             font_cx,
@@ -104,13 +142,14 @@ pub fn build_coverpage_blocks(
         if coverpage.title_to_subtitle_gap > 0.0 {
             out.push(spacer_block(body_left, coverpage.title_to_subtitle_gap));
         }
-        out.push(centered_text_block(
+        out.push(cover_text_block(
             &subtitle,
             body_left,
             column_w,
             coverpage.subtitle_font_size,
             400.0,
             coverpage.text_color.into(),
+            align,
             body_families,
             style.body_line_height,
             font_cx,
@@ -124,13 +163,14 @@ pub fn build_coverpage_blocks(
             out.push(spacer_block(body_left, coverpage.subtitle_to_authors_gap));
         }
         let authors = render_ctx.authors.join(", ");
-        out.push(centered_text_block(
+        out.push(cover_text_block(
             &authors,
             body_left,
             column_w,
             coverpage.authors_font_size,
             400.0,
             coverpage.text_color.into(),
+            align,
             body_families,
             style.body_line_height,
             font_cx,
@@ -143,13 +183,14 @@ pub fn build_coverpage_blocks(
         if coverpage.authors_to_date_gap > 0.0 {
             out.push(spacer_block(body_left, coverpage.authors_to_date_gap));
         }
-        out.push(centered_text_block(
+        out.push(cover_text_block(
             date_str,
             body_left,
             column_w,
             coverpage.date_font_size,
             400.0,
             coverpage.text_color.into(),
+            align,
             body_families,
             style.body_line_height,
             font_cx,
@@ -217,11 +258,14 @@ fn substitute(template: &str, ctx: &RenderContext, date_str: &str) -> String {
             "title" => out.push_str(&ctx.title),
             "description" => out.push_str(ctx.description.as_deref().unwrap_or("")),
             "date" => out.push_str(date_str),
-            _ => {
-                out.push('{');
-                out.push_str(&name);
-                out.push('}');
-            }
+            other => match ctx.vars.get(other) {
+                Some(v) => out.push_str(v),
+                None => {
+                    out.push('{');
+                    out.push_str(&name);
+                    out.push('}');
+                }
+            },
         }
     }
     out
@@ -243,14 +287,23 @@ fn spacer_block(x: f32, height: f32) -> Block {
     }
 }
 
+/// Map the style's cover alignment onto a parley alignment.
+fn cover_alignment(align: CoverAlign) -> Alignment {
+    match align {
+        CoverAlign::Center => Alignment::Center,
+        CoverAlign::Left => Alignment::Start,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn centered_text_block(
+fn cover_text_block(
     text: &str,
     body_left: f32,
     column_w: f32,
     font_size: f32,
     font_weight: f32,
     color: rgb::Color,
+    align: Alignment,
     body_families: &'static [&'static str],
     line_height: f32,
     font_cx: &mut FontContext,
@@ -264,15 +317,7 @@ fn centered_text_block(
         font_families: body_families,
         italic: false,
     };
-    let layout = build_layout_aligned(
-        text,
-        &[],
-        &style,
-        column_w,
-        Alignment::Center,
-        font_cx,
-        layout_cx,
-    );
+    let layout = build_layout_aligned(text, &[], &style, column_w, align, font_cx, layout_cx);
     let slice = TextSlice::whole(layout, text.to_string(), Vec::new(), body_left);
     let height = slice.height();
     Block {

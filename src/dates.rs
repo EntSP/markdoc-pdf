@@ -103,6 +103,37 @@ pub fn iso_to_date_only(s: &str) -> String {
     trimmed.to_string()
 }
 
+/// Parse the four-digit year out of an ISO date string (`2024-07-30…`).
+/// Returns `None` when the leading token isn't a plausible year.
+pub fn year_of(s: &str) -> Option<i32> {
+    let digits: String = s
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let year: i32 = digits.parse().ok()?;
+    (1000..=9999).contains(&year).then_some(year)
+}
+
+/// The current calendar year (local time, UTC fallback).
+pub fn current_year() -> i32 {
+    let dt = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+    dt.year()
+}
+
+/// Format a copyright year span. A single year when the first-release
+/// year is absent or equals `current`, otherwise `first–current` joined
+/// with an en dash. Examples: `"2026"`, `"2024–2026"`.
+///
+/// Pre-computing this in the caller keeps the renderer free of date
+/// conditionals — the result is dropped into a template variable.
+pub fn copyright_year_span(first: Option<i32>, current: i32) -> String {
+    match first {
+        Some(first) if first < current => format!("{first}\u{2013}{current}"),
+        _ => current.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,6 +157,28 @@ mod tests {
     fn returns_none_for_empty() {
         assert!(parse_iso("").is_none());
         assert!(parse_iso("   ").is_none());
+    }
+
+    #[test]
+    fn year_of_extracts_leading_year() {
+        assert_eq!(year_of("2024-07-30"), Some(2024));
+        assert_eq!(year_of("  2026 "), Some(2026));
+        assert_eq!(year_of("2025-01-01T08:30:00Z"), Some(2025));
+        assert_eq!(year_of("not-a-date"), None);
+        assert_eq!(year_of("99"), None); // too few digits to be a year
+        assert_eq!(year_of(""), None);
+    }
+
+    #[test]
+    fn copyright_span_collapses_equal_years() {
+        // first == current → single year.
+        assert_eq!(copyright_year_span(Some(2026), 2026), "2026");
+        // missing first → single (current) year.
+        assert_eq!(copyright_year_span(None, 2026), "2026");
+        // first before current → en-dashed range.
+        assert_eq!(copyright_year_span(Some(2024), 2026), "2024\u{2013}2026");
+        // first after current (clock skew / bad data) → just current.
+        assert_eq!(copyright_year_span(Some(2030), 2026), "2026");
     }
 
     #[test]

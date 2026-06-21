@@ -75,6 +75,13 @@ pub struct RenderContext {
     /// supply a localised or differently-formatted date (e.g.
     /// `"3 May 2026"`).
     pub date_string: Option<String>,
+    /// Caller-supplied template variables, looked up by name in
+    /// header/footer and cover-page template strings (`{my_var}`) after
+    /// the built-in tokens. Lets a caller surface arbitrary frontmatter
+    /// (version, hardware revision, a pre-computed copyright year span,
+    /// …) without the renderer knowing those field names. Unknown names
+    /// are left as literal `{name}` so typos are visible.
+    pub vars: HashMap<String, String>,
 }
 
 /// Per-page template context built internally during emission.
@@ -90,6 +97,9 @@ pub(crate) struct TemplateContext<'a> {
     /// the build's date as `YYYY-MM-DD`; can be overridden by the
     /// caller in `RenderContext`).
     pub date: &'a str,
+    /// Caller-supplied template variables (from `RenderContext::vars`),
+    /// consulted for any `{name}` not in the built-in set.
+    pub vars: &'a HashMap<String, String>,
 }
 
 impl TemplateContext<'_> {
@@ -125,11 +135,15 @@ impl TemplateContext<'_> {
                 "chapter" => out.push_str(self.chapter),
                 "section" => out.push_str(self.section),
                 "date" => out.push_str(self.date),
-                _ => {
-                    out.push('{');
-                    out.push_str(&name);
-                    out.push('}');
-                }
+                other => match self.vars.get(other) {
+                    Some(v) => out.push_str(v),
+                    None => {
+                        // Unknown — leave literal so typos are visible.
+                        out.push('{');
+                        out.push_str(&name);
+                        out.push('}');
+                    }
+                },
             }
         }
         out
@@ -411,6 +425,7 @@ pub fn render_pdf_with(
                     chapter: &current_chapter,
                     section: &current_section,
                     date: &date_str,
+                    vars: &ctx.vars,
                 };
                 if let Some(header) = &style.page_decoration.header {
                     decoration::emit_header(

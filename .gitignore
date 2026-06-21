@@ -4,3 +4,6 @@
 
 # Render outputs — `markdoc-pdf -o foo.pdf` lands wherever you run it.
 *.pdf
+
+# Local scratch / private working material — never part of the crate.
+/EXTRA/

@@ -460,10 +460,10 @@ fn emit_block(
                 }
                 surface.push_transform(&Transform::from_translate(icon.x, icon_y));
                 match &icon.decoded {
-                    super::decoration::DecodedLogo::Raster(img) => {
+                    super::decoration::DecodedMedia::Raster(img) => {
                         surface.draw_image(img.clone(), size);
                     }
-                    super::decoration::DecodedLogo::Svg(tree) => {
+                    super::decoration::DecodedMedia::Svg(tree) => {
                         surface.draw_svg(tree.as_ref(), size, SvgSettings::default());
                     }
                 }

@@ -331,7 +331,7 @@ pub fn render_pdf_with(
     let mut all_outline: Vec<(usize, emit::OutlinePoint)> = Vec::new();
     let mut current_chapter: String = String::new();
     let mut current_section: String = String::new();
-    let mut logo_cache: decoration::LogoCache = HashMap::new();
+    let mut media_cache: decoration::MediaCache = HashMap::new();
     // Pre-format the document date once for `{date}` substitution.
     // Caller-supplied string wins; otherwise we stamp today's date.
     let date_str = ctx
@@ -358,7 +358,7 @@ pub fn render_pdf_with(
                     &mut layout_cx,
                     &mut font_cache,
                     assets,
-                    &mut logo_cache,
+                    &mut media_cache,
                     tagging_enabled,
                 );
             }
@@ -422,7 +422,7 @@ pub fn render_pdf_with(
                         &mut layout_cx,
                         &mut font_cache,
                         assets,
-                        &mut logo_cache,
+                        &mut media_cache,
                         tagging_enabled,
                     );
                 }
@@ -436,7 +436,7 @@ pub fn render_pdf_with(
                         &mut layout_cx,
                         &mut font_cache,
                         assets,
-                        &mut logo_cache,
+                        &mut media_cache,
                         tagging_enabled,
                     );
                 }

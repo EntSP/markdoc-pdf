@@ -26,20 +26,21 @@ use super::TemplateContext;
 use super::style::{HeaderFooterStyle, LogoSpec, Style};
 use super::text::{TextStyle, build_layout, build_layout_aligned, default_families, emit_layout};
 
-/// A decoded header/footer logo. Raster formats are decoded to a
-/// krilla Image; SVG sources parse into a usvg Tree shared via Arc
-/// so the same logo can be redrawn cheaply across pages.
+/// A decoded image / SVG asset ready to draw. Raster formats are
+/// decoded to a krilla Image; SVG sources parse into a usvg Tree shared
+/// via Arc so the same asset can be redrawn cheaply across pages. Used
+/// for header/footer logos, watermarks, and callout icons.
 #[derive(Clone)]
-pub enum DecodedLogo {
+pub enum DecodedMedia {
     Raster(KrillaImage),
     Svg(Arc<SvgTree>),
 }
 
-/// In-memory cache of decoded logos keyed by their asset URI so the
-/// renderer pays decoding cost once per document, not once per page.
-/// `None` entries record load/decoder failures so we don't retry the
-/// same broken URI on every page.
-pub type LogoCache = HashMap<String, Option<DecodedLogo>>;
+/// In-memory cache of decoded media keyed by their asset URI so the
+/// renderer pays decoding cost once per document, not once per page (or
+/// per use site). `None` entries record load/decoder failures so we
+/// don't retry the same broken URI repeatedly.
+pub type MediaCache = HashMap<String, Option<DecodedMedia>>;
 
 #[allow(clippy::too_many_arguments)]
 pub fn emit_header(
@@ -51,7 +52,7 @@ pub fn emit_header(
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     font_cache: &mut HashMap<u64, Font>,
     assets: &dyn AssetResolver,
-    logo_cache: &mut LogoCache,
+    media_cache: &mut MediaCache,
     tagged: bool,
 ) {
     let text_top = header.margin_from_edge;
@@ -59,7 +60,16 @@ pub fn emit_header(
         surface.start_tagged(ContentTag::Artifact(ArtifactType::Header));
     }
     emit_three_slots(
-        surface, style, header, tctx, text_top, font_cx, layout_cx, font_cache, assets, logo_cache,
+        surface,
+        style,
+        header,
+        tctx,
+        text_top,
+        font_cx,
+        layout_cx,
+        font_cache,
+        assets,
+        media_cache,
     );
     if header.rule {
         let rule_y = text_top + header.font_size * 1.2 + header.rule_gap;
@@ -80,7 +90,7 @@ pub fn emit_footer(
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     font_cache: &mut HashMap<u64, Font>,
     assets: &dyn AssetResolver,
-    logo_cache: &mut LogoCache,
+    media_cache: &mut MediaCache,
     tagged: bool,
 ) {
     let text_height = footer.font_size * 1.2;
@@ -93,7 +103,16 @@ pub fn emit_footer(
         draw_rule(surface, style, footer, rule_y);
     }
     emit_three_slots(
-        surface, style, footer, tctx, text_top, font_cx, layout_cx, font_cache, assets, logo_cache,
+        surface,
+        style,
+        footer,
+        tctx,
+        text_top,
+        font_cx,
+        layout_cx,
+        font_cache,
+        assets,
+        media_cache,
     );
     if tagged {
         surface.end_tagged();
@@ -111,7 +130,7 @@ fn emit_three_slots(
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     font_cache: &mut HashMap<u64, Font>,
     assets: &dyn AssetResolver,
-    logo_cache: &mut LogoCache,
+    media_cache: &mut MediaCache,
 ) {
     let body_left = style.margin_x;
     let body_right = style.page_width - style.margin_x;
@@ -134,7 +153,7 @@ fn emit_three_slots(
     // and an asymmetric layout — out of scope for v1).
     let left_text_x = match &spec.logo_left {
         Some(logo) => {
-            draw_logo(surface, logo, body_left, text_top, assets, logo_cache);
+            draw_logo(surface, logo, body_left, text_top, assets, media_cache);
             body_left + logo.width + logo.gap
         }
         None => body_left,
@@ -157,7 +176,7 @@ fn emit_three_slots(
     }
     if let Some(logo) = &spec.logo_center {
         let x = body_left + (body_width - logo.width) * 0.5;
-        draw_logo(surface, logo, x, text_top, assets, logo_cache);
+        draw_logo(surface, logo, x, text_top, assets, media_cache);
     } else if !center.is_empty() {
         let s = tctx.substitute(&center);
         let layout = build_layout_aligned(
@@ -191,7 +210,7 @@ fn emit_three_slots(
                 body_right - logo.width,
                 text_top,
                 assets,
-                logo_cache,
+                media_cache,
             );
             body_right - logo.width - logo.gap
         }
@@ -236,52 +255,52 @@ fn draw_logo(
     x: f32,
     y: f32,
     assets: &dyn AssetResolver,
-    logo_cache: &mut LogoCache,
+    media_cache: &mut MediaCache,
 ) {
     if logo.src.is_empty() || logo.width <= 0.0 || logo.height <= 0.0 {
         return;
     }
-    let entry = logo_cache
+    let entry = media_cache
         .entry(logo.src.clone())
-        .or_insert_with(|| decode_logo(&logo.src, assets));
+        .or_insert_with(|| decode_media(&logo.src, assets));
     let Some(decoded) = entry.clone() else { return };
     let Some(size) = Size::from_wh(logo.width, logo.height) else {
         return;
     };
     surface.push_transform(&Transform::from_translate(x, y));
     match decoded {
-        DecodedLogo::Raster(image) => surface.draw_image(image, size),
-        DecodedLogo::Svg(tree) => {
+        DecodedMedia::Raster(image) => surface.draw_image(image, size),
+        DecodedMedia::Svg(tree) => {
             surface.draw_svg(tree.as_ref(), size, SvgSettings::default());
         }
     }
     surface.pop();
 }
 
-/// Decode an image / SVG asset into a [`DecodedLogo`] via the resolver.
+/// Decode an image / SVG asset into a [`DecodedMedia`] via the resolver.
 /// Shared by the logo, watermark, and callout-icon paths. Returns
 /// `None` on fetch or decode failure.
-pub(super) fn decode_logo(src: &str, assets: &dyn AssetResolver) -> Option<DecodedLogo> {
+pub(super) fn decode_media(src: &str, assets: &dyn AssetResolver) -> Option<DecodedMedia> {
     let bytes = assets.fetch(src).ok()?;
     let format = sniff_format(&bytes);
     match format {
         MediaFormat::Png => KrillaImage::from_png(bytes.into(), false)
             .ok()
-            .map(DecodedLogo::Raster),
+            .map(DecodedMedia::Raster),
         MediaFormat::Jpeg => KrillaImage::from_jpeg(bytes.into(), false)
             .ok()
-            .map(DecodedLogo::Raster),
+            .map(DecodedMedia::Raster),
         MediaFormat::Gif => KrillaImage::from_gif(bytes.into(), false)
             .ok()
-            .map(DecodedLogo::Raster),
+            .map(DecodedMedia::Raster),
         MediaFormat::Webp => KrillaImage::from_webp(bytes.into(), false)
             .ok()
-            .map(DecodedLogo::Raster),
+            .map(DecodedMedia::Raster),
         MediaFormat::Svg => {
             let opts = usvg::Options::default();
             SvgTree::from_data(&bytes, &opts)
                 .ok()
-                .map(|t| DecodedLogo::Svg(Arc::new(t)))
+                .map(|t| DecodedMedia::Svg(Arc::new(t)))
         }
         _ => None,
     }
@@ -300,7 +319,7 @@ pub fn emit_watermark(
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     font_cache: &mut HashMap<u64, Font>,
     assets: &dyn AssetResolver,
-    logo_cache: &mut LogoCache,
+    media_cache: &mut MediaCache,
     tagged: bool,
 ) {
     if watermark.skip_first_page && page_idx == 0 {
@@ -320,9 +339,9 @@ pub fn emit_watermark(
                 height: img.height,
                 gap: 0.0,
             };
-            let entry = logo_cache
+            let entry = media_cache
                 .entry(img.src.clone())
-                .or_insert_with(|| decode_logo(&img.src, assets));
+                .or_insert_with(|| decode_media(&img.src, assets));
             let Some(decoded) = entry.clone() else {
                 if tagged {
                     surface.end_tagged();
@@ -338,8 +357,8 @@ pub fn emit_watermark(
             surface.push_transform(&Transform::from_translate(img.x, img.y));
             surface.push_opacity(opacity);
             match decoded {
-                DecodedLogo::Raster(image) => surface.draw_image(image, size),
-                DecodedLogo::Svg(tree) => {
+                DecodedMedia::Raster(image) => surface.draw_image(image, size),
+                DecodedMedia::Svg(tree) => {
                     surface.draw_svg(tree.as_ref(), size, SvgSettings::default());
                 }
             }

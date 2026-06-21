@@ -485,7 +485,7 @@ fn make_table_block(
 /// indented past `size` so they clear it.
 #[derive(Clone)]
 pub struct BoxedGroupIcon {
-    pub decoded: super::decoration::DecodedLogo,
+    pub decoded: super::decoration::DecodedMedia,
     /// Absolute x of the icon's left edge (page-local).
     pub x: f32,
     /// Square draw size in points.
@@ -1984,7 +1984,7 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
     let icon = if cs.icon.trim().is_empty() {
         None
     } else {
-        super::decoration::decode_logo(cs.icon.trim(), ctx.assets).map(|decoded| BoxedGroupIcon {
+        super::decoration::decode_media(cs.icon.trim(), ctx.assets).map(|decoded| BoxedGroupIcon {
             decoded,
             x: inner_x,
             size: ctx.style.callout_icon_size,

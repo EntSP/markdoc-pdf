@@ -119,6 +119,162 @@ pub fn emit_footer(
     }
 }
 
+/// Draw the notice masthead at the top of a page, starting at `band_top`.
+/// Layout (top → bottom): logo top-left with a subtitle beneath it and a
+/// wrapping disclaimer below that; an icon top-right with a label and an
+/// underline beneath it; a note line and a full-width rule closing the
+/// band. Every piece is optional.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_notice_banner(
+    surface: &mut krilla::surface::Surface<'_>,
+    style: &Style,
+    banner: &super::style::NoticeBanner,
+    band_top: f32,
+    tctx: &TemplateContext<'_>,
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
+    font_cache: &mut HashMap<u64, Font>,
+    assets: &dyn AssetResolver,
+    media_cache: &mut MediaCache,
+    tagged: bool,
+) {
+    let left = style.margin_x;
+    let right = style.page_width - style.margin_x;
+    let band_bottom = band_top + banner.height;
+
+    if tagged {
+        surface.start_tagged(ContentTag::Artifact(ArtifactType::Header));
+    }
+
+    // ── Right column: icon, label, underline ───────────────────────────
+    let mut right_block_left = right; // disclaimer wraps up to here
+    if let Some(icon) = &banner.icon {
+        draw_logo(
+            surface,
+            icon,
+            right - icon.width,
+            band_top,
+            assets,
+            media_cache,
+        );
+        right_block_left = right - icon.width - 12.0;
+        let mut y = band_top + icon.height + 4.0;
+        if !banner.label.trim().is_empty() {
+            let s = tctx.substitute(&banner.label);
+            let st = banner_text_style(banner.label_color, banner.label_font_size);
+            let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
+            let w = layout
+                .lines()
+                .next()
+                .map(|l| l.metrics().advance)
+                .unwrap_or(0.0);
+            let lx = right - w;
+            emit_layout(surface, &layout, &s, lx, y, font_cache, 0..1, 0.0);
+            y += banner.label_font_size * 1.2;
+            if banner.label_underline {
+                stroke_hline(
+                    surface,
+                    lx,
+                    right,
+                    y + 1.0,
+                    banner.label_underline_color.into(),
+                    banner.label_underline_thickness,
+                );
+            }
+        }
+    }
+
+    // ── Left column: logo, subtitle, disclaimer ────────────────────────
+    let mut y = band_top;
+    if let Some(logo) = &banner.logo {
+        draw_logo(surface, logo, left, band_top, assets, media_cache);
+        y = band_top + logo.height;
+    }
+    if !banner.logo_subtitle.trim().is_empty() {
+        let s = tctx.substitute(&banner.logo_subtitle);
+        let st = banner_text_style(banner.logo_subtitle_color, banner.logo_subtitle_font_size);
+        let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
+        emit_layout(surface, &layout, &s, left, y + 1.0, font_cache, 0..1, 0.0);
+        y += banner.logo_subtitle_font_size * 1.4;
+    }
+    if !banner.disclaimer.trim().is_empty() {
+        let s = tctx.substitute(&banner.disclaimer);
+        let st = banner_text_style(banner.disclaimer_color, banner.disclaimer_font_size);
+        let avail = (right_block_left - left).max(40.0);
+        let layout = build_layout(&s, &[], &st, avail, font_cx, layout_cx);
+        let lines = layout
+            .lines()
+            .count()
+            .min(banner.disclaimer_max_lines.max(1) as usize);
+        y += 4.0;
+        emit_layout(surface, &layout, &s, left, y, font_cache, 0..lines, 0.0);
+        y += lines as f32 * banner.disclaimer_font_size * 1.3;
+    }
+
+    // ── Note line, then the closing rule directly beneath it ───────────
+    // The note flows under the disclaimer so the two never overlap,
+    // regardless of how many lines the disclaimer wrapped to.
+    if !banner.note.trim().is_empty() {
+        let s = tctx.substitute(&banner.note);
+        let st = banner_text_style(banner.note_color, banner.note_font_size);
+        let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
+        emit_layout(surface, &layout, &s, left, y + 2.0, font_cache, 0..1, 0.0);
+        y += banner.note_font_size * 1.3 + 2.0;
+    }
+    if banner.rule {
+        // Close the band with a rule below the flowed content (clamped to
+        // the reserved band bottom so it never crosses into the body).
+        let rule_y = (y + 3.0).min(band_bottom);
+        stroke_hline(
+            surface,
+            left,
+            right,
+            rule_y,
+            banner.rule_color.into(),
+            banner.rule_thickness,
+        );
+    }
+
+    if tagged {
+        surface.end_tagged();
+    }
+}
+
+fn banner_text_style(color: super::style::ColorRgb, font_size: f32) -> TextStyle<'static> {
+    TextStyle {
+        font_size,
+        font_weight: 400.0,
+        line_height: 1.25,
+        color: color.into(),
+        font_families: default_families(),
+        italic: false,
+    }
+}
+
+/// Stroke a horizontal line from `x0` to `x1` at `y`.
+fn stroke_hline(
+    surface: &mut krilla::surface::Surface<'_>,
+    x0: f32,
+    x1: f32,
+    y: f32,
+    color: krilla::color::rgb::Color,
+    thickness: f32,
+) {
+    let mut pb = PathBuilder::new();
+    pb.move_to(x0, y);
+    pb.line_to(x1, y);
+    if let Some(path) = pb.finish() {
+        surface.set_stroke(Some(Stroke {
+            paint: color.into(),
+            width: thickness,
+            opacity: NormalizedF32::ONE,
+            ..Default::default()
+        }));
+        surface.draw_path(&path);
+        surface.set_stroke(None);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_three_slots(
     surface: &mut krilla::surface::Surface<'_>,

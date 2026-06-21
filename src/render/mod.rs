@@ -276,8 +276,22 @@ pub fn render_pdf_with(
         .as_ref()
         .map(|f| f.reserved_height())
         .unwrap_or(0.0);
-    let page_budget = style.page_height - 2.0 * style.margin_y - header_reserved - footer_reserved;
-    let body_start_y = style.margin_y + header_reserved;
+    // Optional notice banner — a tall masthead at the top of every page.
+    // It starts at `banner_band_top` and its `height` plus a gap pushes
+    // the body down; reserve the extra space beyond the normal top margin.
+    let banner_band_top = style.margin_y * 0.42;
+    let banner_reserved = style
+        .page_decoration
+        .banner
+        .as_ref()
+        .map(|b| (banner_band_top + b.height + 12.0 - style.margin_y).max(0.0))
+        .unwrap_or(0.0);
+    let page_budget = style.page_height
+        - 2.0 * style.margin_y
+        - header_reserved
+        - footer_reserved
+        - banner_reserved;
+    let body_start_y = style.margin_y + header_reserved + banner_reserved;
     let inner_x = style.margin_x;
     let inner_w = style.page_width - 2.0 * style.margin_x;
 
@@ -470,6 +484,21 @@ pub fn render_pdf_with(
                         &mut surface,
                         style,
                         footer,
+                        &tctx,
+                        &mut font_cx,
+                        &mut layout_cx,
+                        &mut font_cache,
+                        assets,
+                        &mut media_cache,
+                        tagging_enabled,
+                    );
+                }
+                if let Some(banner) = &style.page_decoration.banner {
+                    decoration::emit_notice_banner(
+                        &mut surface,
+                        style,
+                        banner,
+                        banner_band_top,
                         &tctx,
                         &mut font_cx,
                         &mut layout_cx,

@@ -970,9 +970,91 @@ pub enum PdfExportProfile {
 pub struct PageDecorationStyle {
     pub header: Option<HeaderFooterStyle>,
     pub footer: Option<HeaderFooterStyle>,
+    /// Optional rich "banner" drawn at the top of every page above the
+    /// body — a taller masthead than the 3-slot header, for bulletin /
+    /// notice documents. Reserves its `height` so the body starts below
+    /// it. See [`NoticeBanner`].
+    pub banner: Option<NoticeBanner>,
     /// If true, the first page is rendered without header/footer (useful
     /// when the first page is a title or cover page).
     pub skip_first_page: bool,
+}
+
+/// A masthead drawn at the top of every page: a logo (with an optional
+/// subtitle beneath it) on the left, a wrapping disclaimer paragraph
+/// below them, an icon on the right with a label and underline beneath
+/// it, and an optional note line + full-width rule closing the band.
+///
+/// All text fields are templates (`{title}` / `{date}` / `{language}` /
+/// any `RenderContext` var). Every piece is optional; an empty field is
+/// simply skipped. The band reserves `height` points at the top of the
+/// page so body content never collides with it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct NoticeBanner {
+    /// Reserved vertical space (pt) from the page top.
+    pub height: f32,
+    /// Left masthead logo.
+    pub logo: Option<LogoSpec>,
+    /// Small line drawn directly under the logo (e.g. a company name).
+    pub logo_subtitle: String,
+    pub logo_subtitle_color: ColorRgb,
+    pub logo_subtitle_font_size: f32,
+    /// Wrapping disclaimer paragraph, below the logo block.
+    pub disclaimer: String,
+    pub disclaimer_color: ColorRgb,
+    pub disclaimer_font_size: f32,
+    /// Max lines the disclaimer may wrap into (reserves no extra space;
+    /// the band `height` governs layout).
+    pub disclaimer_max_lines: u8,
+    /// Right-side icon (e.g. a warning triangle).
+    pub icon: Option<LogoSpec>,
+    /// Label drawn under the icon (e.g. `"Safety Notice"`).
+    pub label: String,
+    pub label_color: ColorRgb,
+    pub label_font_size: f32,
+    /// Draw an accent underline beneath the label.
+    pub label_underline: bool,
+    pub label_underline_color: ColorRgb,
+    pub label_underline_thickness: f32,
+    /// A note line near the band's bottom (e.g.
+    /// `"Original language: {language}"`).
+    pub note: String,
+    pub note_color: ColorRgb,
+    pub note_font_size: f32,
+    /// Full-width rule closing the band (above the body).
+    pub rule: bool,
+    pub rule_color: ColorRgb,
+    pub rule_thickness: f32,
+}
+
+impl Default for NoticeBanner {
+    fn default() -> Self {
+        Self {
+            height: 100.0,
+            logo: None,
+            logo_subtitle: String::new(),
+            logo_subtitle_color: ColorRgb::new(140, 145, 150),
+            logo_subtitle_font_size: 6.0,
+            disclaimer: String::new(),
+            disclaimer_color: ColorRgb::new(150, 155, 160),
+            disclaimer_font_size: 8.0,
+            disclaimer_max_lines: 3,
+            icon: None,
+            label: String::new(),
+            label_color: ColorRgb::new(20, 20, 20),
+            label_font_size: 11.0,
+            label_underline: false,
+            label_underline_color: ColorRgb::new(75, 146, 219),
+            label_underline_thickness: 1.2,
+            note: String::new(),
+            note_color: ColorRgb::new(60, 60, 60),
+            note_font_size: 8.5,
+            rule: true,
+            rule_color: ColorRgb::new(180, 185, 190),
+            rule_thickness: 0.6,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

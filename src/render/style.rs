@@ -164,14 +164,31 @@ impl Default for HeadingNumbering {
     }
 }
 
+/// How a callout is framed.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CalloutDecoration {
+    /// Filled rectangle with optional border and a left accent stripe
+    /// (the default — the "admonition box" look).
+    #[default]
+    Box,
+    /// No fill or stripe — a horizontal rule above and below the content
+    /// (the "bulletin / notice" look). The rule colour is the callout's
+    /// `accent`; its thickness is the global `callout_rule_thickness`.
+    Rules,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CalloutStyle {
     pub background: ColorRgb,
     pub border: ColorRgb,
     /// Left accent bar colour. Drawn as a thicker stripe on the left side
-    /// of the box for visual emphasis.
+    /// of the box (`decoration = "box"`), or as the rule colour
+    /// (`decoration = "rules"`).
     pub accent: ColorRgb,
+    /// How the callout is framed. Defaults to a filled box.
+    pub decoration: CalloutDecoration,
     /// Optional bold heading drawn as the first line of the box (e.g.
     /// `"WARNING"`). Empty / unset renders no label, preserving the
     /// plain-box behaviour. Typically uppercase.
@@ -179,6 +196,9 @@ pub struct CalloutStyle {
     /// Colour for the `label`. Defaults to the document body text
     /// colour; set it (e.g. to the accent) to tint the heading.
     pub label_color: Option<ColorRgb>,
+    /// Centre the label across the content column instead of
+    /// left-aligning it. Used by the bulletin layout.
+    pub label_centered: bool,
     /// Optional icon asset (any `AssetResolver` URI / path) drawn at the
     /// box's top-left, with the label and body indented past it. Empty /
     /// unset renders no icon.
@@ -191,8 +211,10 @@ impl Default for CalloutStyle {
             background: ColorRgb::new(247, 248, 250),
             border: ColorRgb::new(220, 225, 230),
             accent: ColorRgb::new(120, 130, 145),
+            decoration: CalloutDecoration::Box,
             label: String::new(),
             label_color: None,
+            label_centered: false,
             icon: String::new(),
         }
     }
@@ -396,6 +418,9 @@ pub struct Style {
     pub callout_icon_size: f32,
     /// Horizontal gap (pt) between the icon and the label / body column.
     pub callout_icon_gap: f32,
+    /// Stroke thickness (pt) for the rules of a `decoration = "rules"`
+    /// callout.
+    pub callout_rule_thickness: f32,
 
     // ── Horizontal rule ───────────────────────────────────────────────
     pub rule_color: ColorRgb,
@@ -503,6 +528,7 @@ impl Default for Style {
             callout_label_size: 11.0,
             callout_icon_size: 20.0,
             callout_icon_gap: 10.0,
+            callout_rule_thickness: 0.7,
             rule_color: ColorRgb::new(200, 205, 215),
             rule_thickness: 0.75,
             rule_space_around: 12.0,

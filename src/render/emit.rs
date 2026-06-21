@@ -390,6 +390,8 @@ fn emit_block(
             padding,
             children,
             icon,
+            top_rule,
+            bottom_rule,
         } => {
             let box_top = y;
             let box_bottom = y + block.height;
@@ -445,6 +447,29 @@ fn emit_block(
                     rule: Default::default(),
                 }));
                 surface.draw_path(&path);
+            }
+
+            // 3b. Bulletin rules across the top / bottom edges.
+            let mut draw_edge_rule = |edge_y: f32, color: rgb::Color, thickness: f32| {
+                let mut pb = PathBuilder::new();
+                pb.move_to(*x, edge_y);
+                pb.line_to(*x + *width, edge_y);
+                if let Some(path) = pb.finish() {
+                    surface.set_stroke(Some(Stroke {
+                        paint: color.into(),
+                        width: thickness,
+                        opacity: NormalizedF32::ONE,
+                        ..Default::default()
+                    }));
+                    surface.draw_path(&path);
+                    surface.set_stroke(None);
+                }
+            };
+            if let Some((color, thickness)) = top_rule {
+                draw_edge_rule(box_top, *color, *thickness);
+            }
+            if let Some((color, thickness)) = bottom_rule {
+                draw_edge_rule(box_bottom, *color, *thickness);
             }
 
             // 4. Optional icon at the box's top-left content corner.

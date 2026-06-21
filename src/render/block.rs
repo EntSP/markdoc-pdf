@@ -524,6 +524,11 @@ pub enum BlockDraw {
         padding: f32,
         children: Vec<Block>,
         icon: Option<BoxedGroupIcon>,
+        /// Optional horizontal rule `(colour, thickness)` drawn across
+        /// the top / bottom edge of the box — the "bulletin" framing,
+        /// used instead of a fill+border.
+        top_rule: Option<(rgb::Color, f32)>,
+        bottom_rule: Option<(rgb::Color, f32)>,
     },
     /// A list item: marker drawn at `marker_x`. Body blocks are
     /// pre-positioned at the indented content x (baked in at layout
@@ -1786,6 +1791,8 @@ fn layout_blockquote(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
             padding: 0.0, // children already shifted via inner_x
             children,
             icon: None,
+            top_rule: None,
+            bottom_rule: None,
         },
         outline: None,
         anchor_id: None,
@@ -1884,6 +1891,8 @@ fn layout_code_block(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
             padding,
             children: vec![inner_block],
             icon: None,
+            top_rule: None,
+            bottom_rule: None,
         },
         outline: None,
         anchor_id: None,
@@ -1972,7 +1981,12 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
     };
     let cs = ctx.style.callout_styles.for_kind(kind).clone();
     let padding = ctx.style.callout_padding;
-    let accent_w = ctx.style.callout_accent_width;
+    // The left accent stripe only exists in the box framing; the bulletin
+    // (rules) framing has none, so it reserves no left gutter.
+    let accent_w = match cs.decoration {
+        super::style::CalloutDecoration::Box => ctx.style.callout_accent_width,
+        super::style::CalloutDecoration::Rules => 0.0,
+    };
     // Inner column accounts for both the accent bar (on the left) and the
     // padding on both sides.
     let inner_x = x + accent_w + padding;
@@ -2005,6 +2019,7 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
             content_x,
             content_w,
             cs.label_color.unwrap_or(ctx.style.text_color).into(),
+            cs.label_centered,
             ctx,
         ));
     }
@@ -2024,19 +2039,37 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
     // The box must clear both the content and (if taller) the icon.
     let inner_height = content_height.max(icon.as_ref().map(|i| i.size).unwrap_or(0.0));
 
+    // Two framings: a filled box (default) or a pair of horizontal rules
+    // (bulletin style). The rule colour is the accent.
+    let (background, border, accent_left, top_rule, bottom_rule) = match cs.decoration {
+        super::style::CalloutDecoration::Box => (
+            Some(cs.background.into()),
+            Some(cs.border.into()),
+            Some(cs.accent.into()),
+            None,
+            None,
+        ),
+        super::style::CalloutDecoration::Rules => {
+            let rule = (cs.accent.into(), ctx.style.callout_rule_thickness);
+            (None, None, None, Some(rule), Some(rule))
+        }
+    };
+
     vec![Block {
         height: inner_height + 2.0 * padding,
         space_after: ctx.style.callout_space_after,
         draw: BlockDraw::BoxedGroup {
             x,
             width,
-            background: Some(cs.background.into()),
-            border: Some(cs.border.into()),
-            accent_left: Some(cs.accent.into()),
+            background,
+            border,
+            accent_left,
             accent_width: accent_w,
             padding,
             children,
             icon,
+            top_rule,
+            bottom_rule,
         },
         outline: None,
         anchor_id: None,
@@ -2046,12 +2079,14 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
 }
 
 /// Build the bold single-line label block (e.g. `WARNING`) that heads a
-/// callout. Positioned at `x` with the given colour.
+/// callout. Positioned at `x` with the given colour; `centered` spreads
+/// it across `width` instead of left-aligning.
 fn build_callout_label_block(
     label: &str,
     x: f32,
     width: f32,
     color: rgb::Color,
+    centered: bool,
     ctx: &mut LayoutCtx<'_>,
 ) -> Block {
     let style = TextStyle {
@@ -2062,7 +2097,19 @@ fn build_callout_label_block(
         font_families: ctx.body_families,
         italic: false,
     };
-    let layout = build_layout(label, &[], &style, width, ctx.font_cx, ctx.layout_cx);
+    let layout = if centered {
+        super::text::build_layout_aligned(
+            label,
+            &[],
+            &style,
+            width,
+            parley::layout::Alignment::Center,
+            ctx.font_cx,
+            ctx.layout_cx,
+        )
+    } else {
+        build_layout(label, &[], &style, width, ctx.font_cx, ctx.layout_cx)
+    };
     let slice = TextSlice::whole(layout, label.to_string(), Vec::new(), x);
     let height = slice.height();
     Block {

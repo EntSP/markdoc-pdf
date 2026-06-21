@@ -239,6 +239,12 @@ pub fn render_pdf_with(
         .clone()
         .unwrap_or_else(crate::dates::today_yyyy_mm_dd);
     let mut blocks = blocks;
+    // Number of leading pages the cover occupies (0 when disabled). The
+    // cover emits one `PageBreak` per page it produces (plus an optional
+    // blank verso), so counting them gives the page count without a
+    // separate pagination pass. Used to keep the cover ahead of any
+    // start-positioned ToC / LoF / LoT.
+    let mut cover_page_count = 0usize;
     if style.coverpage.enabled {
         let mut fp = coverpage::build_coverpage_blocks(
             style,
@@ -249,6 +255,10 @@ pub fn render_pdf_with(
             &mut layout_cx,
             &date_for_coverpage,
         );
+        cover_page_count = fp
+            .iter()
+            .filter(|b| matches!(b.draw, block::BlockDraw::PageBreak))
+            .count();
         fp.append(&mut blocks);
         blocks = fp;
     }
@@ -315,6 +325,7 @@ pub fn render_pdf_with(
             &mut font_cx,
             &mut layout_cx,
             page_budget,
+            cover_page_count,
         )
     } else {
         body_with_pools
@@ -736,16 +747,16 @@ fn build_outline(points: &[(usize, emit::OutlinePoint)]) -> Outline {
 /// carry the pool the paginator built for them; front-matter pages
 /// pair with an empty pool (ToC/LoF/LoT never reference footnotes).
 fn build_with_front_matter_pools(
-    body_with_pools: Vec<(Vec<block::Block>, Vec<block::Block>)>,
+    mut body_with_pools: Vec<(Vec<block::Block>, Vec<block::Block>)>,
     style: &Style,
     body_families: &'static [&'static str],
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     page_budget: f32,
+    cover_page_count: usize,
 ) -> Vec<(Vec<block::Block>, Vec<block::Block>)> {
     let body_pages: Vec<Vec<block::Block>> =
         body_with_pools.iter().map(|(b, _)| b.clone()).collect();
-    let pools: Vec<Vec<block::Block>> = body_with_pools.into_iter().map(|(_, p)| p).collect();
     let (start_pages, _body_through, end_pages) = build_front_matter_split(
         body_pages,
         style,
@@ -754,22 +765,21 @@ fn build_with_front_matter_pools(
         layout_cx,
         page_budget,
     );
-    let mut out: Vec<(Vec<block::Block>, Vec<block::Block>)> =
-        start_pages.into_iter().map(|p| (p, Vec::new())).collect();
-    for (body, pool) in body_with_pools_from(_body_through, pools) {
-        out.push((body, pool));
-    }
+
+    // The synthesised cover (the first `cover_page_count` body pages)
+    // must lead; start-positioned ToC / LoF / LoT slot in *after* it.
+    // Page numbers already account for this — a content heading at body
+    // page `idx` (which counts the cover pages) maps to final page
+    // `idx + start_offset + 1`, so the cover offset cancels out.
+    let k = cover_page_count.min(body_with_pools.len());
+    let rest_body = body_with_pools.split_off(k);
+    let cover_pages = body_with_pools; // the leading `k` (body, pool) pages
+
+    let mut out = cover_pages;
+    out.extend(start_pages.into_iter().map(|p| (p, Vec::new())));
+    out.extend(rest_body);
     out.extend(end_pages.into_iter().map(|p| (p, Vec::new())));
     out
-}
-
-fn body_with_pools_from(
-    body: Vec<Vec<block::Block>>,
-    pools: Vec<Vec<block::Block>>,
-) -> Vec<(Vec<block::Block>, Vec<block::Block>)> {
-    body.into_iter()
-        .zip(pools.into_iter().chain(std::iter::repeat(Vec::new())))
-        .collect()
 }
 
 /// Variant of [`build_with_front_matter`] that returns the

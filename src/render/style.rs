@@ -1080,8 +1080,8 @@ pub struct PageDecorationStyle {
 
 /// A masthead drawn at the top of every page: a logo (with an optional
 /// subtitle beneath it) on the left, a wrapping disclaimer paragraph
-/// below them, an icon on the right with a label and underline beneath
-/// it, and an optional note line + full-width rule closing the band.
+/// below them, an icon on the right whose label is centred beneath it
+/// just above an optional note line + full-width rule closing the band.
 ///
 /// All text fields are templates (`{title}` / `{date}` / `{language}` /
 /// any `RenderContext` var). Every piece is optional; an empty field is
@@ -1107,14 +1107,11 @@ pub struct NoticeBanner {
     pub disclaimer_max_lines: u8,
     /// Right-side icon (e.g. a warning triangle).
     pub icon: Option<LogoSpec>,
-    /// Label drawn under the icon (e.g. `"Safety Notice"`).
+    /// Label centred under the icon, just above the closing rule (e.g.
+    /// `"Safety Notice"`).
     pub label: String,
     pub label_color: ColorRgb,
     pub label_font_size: f32,
-    /// Draw an accent underline beneath the label.
-    pub label_underline: bool,
-    pub label_underline_color: ColorRgb,
-    pub label_underline_thickness: f32,
     /// A note line near the band's bottom (e.g.
     /// `"Original language: {language}"`).
     pub note: String,
@@ -1142,9 +1139,6 @@ impl Default for NoticeBanner {
             label: String::new(),
             label_color: ColorRgb::new(20, 20, 20),
             label_font_size: 11.0,
-            label_underline: false,
-            label_underline_color: ColorRgb::new(75, 146, 219),
-            label_underline_thickness: 1.2,
             note: String::new(),
             note_color: ColorRgb::new(60, 60, 60),
             note_font_size: 8.5,

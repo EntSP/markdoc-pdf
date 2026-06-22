@@ -120,10 +120,10 @@ pub fn emit_footer(
 }
 
 /// Draw the notice masthead at the top of a page, starting at `band_top`.
-/// Layout (top → bottom): logo top-left with a subtitle beneath it and a
-/// wrapping disclaimer below that; an icon top-right with a label and an
-/// underline beneath it; a note line and a full-width rule closing the
-/// band. Every piece is optional.
+/// Layout: logo top-left with a subtitle beneath it and a wrapping
+/// disclaimer below that; an icon top-right; a note line on the left and
+/// a full-width rule closing the band; the icon's label centred under the
+/// icon, just above that rule. Every piece is optional.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_notice_banner(
     surface: &mut krilla::surface::Surface<'_>,
@@ -146,8 +146,11 @@ pub fn emit_notice_banner(
         surface.start_tagged(ContentTag::Artifact(ArtifactType::Header));
     }
 
-    // ── Right column: icon, label, underline ───────────────────────────
+    // ── Right icon (top-right). Its label is positioned later, once the
+    //    closing rule's y is known, so the label can sit just above the
+    //    rule, centred under the icon. ──────────────────────────────────
     let mut right_block_left = right; // disclaimer wraps up to here
+    let mut icon_center_x: Option<f32> = None;
     if let Some(icon) = &banner.icon {
         draw_logo(
             surface,
@@ -158,30 +161,7 @@ pub fn emit_notice_banner(
             media_cache,
         );
         right_block_left = right - icon.width - 12.0;
-        let mut y = band_top + icon.height + 4.0;
-        if !banner.label.trim().is_empty() {
-            let s = tctx.substitute(&banner.label);
-            let st = banner_text_style(banner.label_color, banner.label_font_size);
-            let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
-            let w = layout
-                .lines()
-                .next()
-                .map(|l| l.metrics().advance)
-                .unwrap_or(0.0);
-            let lx = right - w;
-            emit_layout(surface, &layout, &s, lx, y, font_cache, 0..1, 0.0);
-            y += banner.label_font_size * 1.2;
-            if banner.label_underline {
-                stroke_hline(
-                    surface,
-                    lx,
-                    right,
-                    y + 1.0,
-                    banner.label_underline_color.into(),
-                    banner.label_underline_thickness,
-                );
-            }
-        }
+        icon_center_x = Some(right - icon.width / 2.0);
     }
 
     // ── Left column: logo, subtitle, disclaimer ────────────────────────
@@ -221,10 +201,10 @@ pub fn emit_notice_banner(
         emit_layout(surface, &layout, &s, left, y + 2.0, font_cache, 0..1, 0.0);
         y += banner.note_font_size * 1.3 + 2.0;
     }
+    // Close the band with a rule below the flowed content (clamped to the
+    // reserved band bottom so it never crosses into the body).
+    let rule_y = (y + 3.0).min(band_bottom);
     if banner.rule {
-        // Close the band with a rule below the flowed content (clamped to
-        // the reserved band bottom so it never crosses into the body).
-        let rule_y = (y + 3.0).min(band_bottom);
         stroke_hline(
             surface,
             left,
@@ -233,6 +213,27 @@ pub fn emit_notice_banner(
             banner.rule_color.into(),
             banner.rule_thickness,
         );
+    }
+
+    // ── Icon label: centred under the icon, sitting just above the rule
+    //    (and always kept clear of the icon above it). ──────────────────
+    if let Some(cx) = icon_center_x
+        && !banner.label.trim().is_empty()
+    {
+        let s = tctx.substitute(&banner.label);
+        let st = banner_text_style(banner.label_color, banner.label_font_size);
+        let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
+        let w = layout
+            .lines()
+            .next()
+            .map(|l| l.metrics().advance)
+            .unwrap_or(0.0);
+        // Centre under the icon, but never overflow the right margin.
+        let lx = (cx - w / 2.0).min(right - w).max(left);
+        let line_h = banner.label_font_size * 1.25;
+        let icon_h = banner.icon.as_ref().map(|i| i.height).unwrap_or(0.0);
+        let label_top = (rule_y - line_h - 3.0).max(band_top + icon_h + 2.0);
+        emit_layout(surface, &layout, &s, lx, label_top, font_cache, 0..1, 0.0);
     }
 
     if tagged {

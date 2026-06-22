@@ -1437,7 +1437,13 @@ pub fn build_toc_blocks(
             height: title_slice.height(),
             space_after: 18.0,
             draw: BlockDraw::Text(title_slice),
-            outline: None,
+            // A top-level outline entry so the section's own title drives
+            // the running header (and bookmark) on its page rather than
+            // the previous chapter bleeding through.
+            outline: Some(OutlineEntry {
+                level: 1,
+                text: style.toc.title.clone(),
+            }),
             anchor_id: None,
 
             tag_role: None,
@@ -1528,7 +1534,12 @@ pub fn build_list_section_blocks(
             height: title_slice.height(),
             space_after: 18.0,
             draw: BlockDraw::Text(title_slice),
-            outline: None,
+            // Top-level outline entry so this section's title drives its
+            // own running header rather than inheriting the prior chapter.
+            outline: Some(OutlineEntry {
+                level: 1,
+                text: title.to_string(),
+            }),
             anchor_id: None,
 
             tag_role: None,

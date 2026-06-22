@@ -128,9 +128,23 @@ fn run(args: &Args) -> Result<(), AppError> {
 
     let resolver = FsAssetResolver::new(&assets_root);
 
-    // ── Pull doc metadata from frontmatter. Missing frontmatter is
-    //    silently OK; missing fields fall back to sensible defaults.
-    let fm_opt = FluxFrontmatter::from_node(&doc).ok();
+    // ── Pull doc metadata from frontmatter. A document with no YAML
+    //    block is fine (fields fall back to defaults), but frontmatter
+    //    that is present yet unparsable is surfaced as a warning rather
+    //    than silently dropped — otherwise a single bad field would
+    //    quietly strip the title, dates and everything else.
+    let fm_opt = match FluxFrontmatter::from_node(&doc) {
+        Ok(fm) => Some(fm),
+        Err(flux_types::FluxError::NoFrontmatter) => None,
+        Err(e) => {
+            eprintln!(
+                "warning: ignoring unparsable frontmatter in {} ({e}); \
+                 title/date metadata may be missing",
+                args.input.display()
+            );
+            None
+        }
+    };
     let creation_date = fm_opt
         .as_ref()
         .and_then(|fm| fm.first_release_date.as_deref())

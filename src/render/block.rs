@@ -120,6 +120,7 @@ impl Block {
                 border_color,
                 border_thickness,
                 border_style,
+                edge,
                 caption,
             } => try_split_table(
                 x,
@@ -130,6 +131,7 @@ impl Block {
                 border_color,
                 border_thickness,
                 border_style,
+                edge,
                 self.space_after,
                 remaining,
                 anchor_id,
@@ -237,6 +239,7 @@ fn try_split_table(
     border_color: rgb::Color,
     border_thickness: f32,
     border_style: super::style::TableBorders,
+    edge: Option<(rgb::Color, f32)>,
     space_after: f32,
     remaining: f32,
     anchor_id: Option<String>,
@@ -290,6 +293,7 @@ fn try_split_table(
                     border_color,
                     border_thickness,
                     border_style,
+                    edge,
                     0.0,
                     anchor_id,
                     caption.clone(),
@@ -303,6 +307,7 @@ fn try_split_table(
                     border_color,
                     border_thickness,
                     border_style,
+                    edge,
                     space_after,
                     None,
                     None,
@@ -319,6 +324,7 @@ fn try_split_table(
             border_color,
             border_thickness,
             border_style,
+            edge,
             space_after,
             anchor_id,
             caption,
@@ -334,6 +340,7 @@ fn try_split_table(
             border_color,
             border_thickness,
             border_style,
+            edge,
             space_after,
             anchor_id,
             caption,
@@ -359,6 +366,7 @@ fn try_split_table(
         border_color,
         border_thickness,
         border_style,
+        edge,
         0.0,
         anchor_id,
         caption.clone(),
@@ -372,6 +380,7 @@ fn try_split_table(
         border_color,
         border_thickness,
         border_style,
+        edge,
         space_after,
         None,
         None,
@@ -465,6 +474,7 @@ fn make_table_block(
     border_color: rgb::Color,
     border_thickness: f32,
     border_style: super::style::TableBorders,
+    edge: Option<(rgb::Color, f32)>,
     space_after: f32,
     anchor_id: Option<String>,
     caption: Option<String>,
@@ -483,6 +493,7 @@ fn make_table_block(
             border_color,
             border_thickness,
             border_style,
+            edge,
             caption,
         },
         outline: None,
@@ -609,6 +620,10 @@ pub enum BlockDraw {
         border_thickness: f32,
         /// Which rules to draw (grid / horizontal-only / none).
         border_style: super::style::TableBorders,
+        /// Optional outer-frame stroke `(color, thickness)` for the
+        /// top/bottom (and grid left/right) rules; `None` draws edges in
+        /// the internal border colour like the rest.
+        edge: Option<(rgb::Color, f32)>,
         caption: Option<String>,
     },
 }
@@ -2394,6 +2409,12 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     if header_rows.is_empty() && body_rows.is_empty() {
         return Vec::new();
     }
+    // A markdown table must declare a header row; when that row is wholly
+    // empty (the header-less metadata table authored as `| | |`), drop it
+    // so the table renders without a stray empty band and rule on top.
+    if !header_rows.is_empty() && rows_are_blank(&header_rows) {
+        header_rows.clear();
+    }
 
     // Column count = max cells across all rows.
     let num_cols = header_rows
@@ -2471,6 +2492,12 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             border_color: ctx.style.table_border_color.into(),
             border_thickness,
             border_style: ctx.style.table_borders,
+            edge: ctx.style.table_edge_color.map(|c| {
+                (
+                    c.into(),
+                    ctx.style.table_edge_thickness.unwrap_or(border_thickness),
+                )
+            }),
             caption: ctx.pending_table_caption.take(),
         },
         outline: None,
@@ -2518,6 +2545,28 @@ fn as_tr(c: &RenderableTreeNode) -> Option<&Tag> {
         return Some(t.as_ref());
     }
     None
+}
+
+/// True when every cell across `rows` is visually empty — the case
+/// markdown's mandatory header row produces for a header-less metadata
+/// table (`| | |`). Used to drop such a header so it leaves no stray
+/// band or rule.
+fn rows_are_blank(rows: &[RowSource<'_>]) -> bool {
+    rows.iter()
+        .all(|r| r.cells().all(|c| node_text_is_blank(&c.children)))
+}
+
+/// Recursively true when a node subtree carries no visible content — no
+/// non-whitespace text and no image/media tag.
+fn node_text_is_blank(nodes: &[RenderableTreeNode]) -> bool {
+    nodes.iter().all(|n| match n {
+        RenderableTreeNode::Scalar(Scalar::String(s)) => s.trim().is_empty(),
+        // Numbers / bools render as visible text.
+        RenderableTreeNode::Scalar(_) => false,
+        RenderableTreeNode::Tag(t) => {
+            !matches!(t.name.as_str(), "img" | "media") && node_text_is_blank(&t.children)
+        }
+    })
 }
 
 fn layout_row_source(
@@ -2982,6 +3031,28 @@ mod tests {
         assert_eq!(format_ordered_marker(14, UpperRoman), "XIV");
         // Out-of-range roman falls back to decimal.
         assert_eq!(format_ordered_marker(4000, LowerRoman), "4000");
+    }
+
+    #[test]
+    fn blank_cell_detection_drops_empty_headers() {
+        let txt = |s: &str| RenderableTreeNode::Scalar(Scalar::String(s.to_string()));
+        let tag = |name: &str, children: Vec<RenderableTreeNode>| {
+            RenderableTreeNode::Tag(Box::new(MdTag {
+                name: name.to_string(),
+                attributes: HashMap::new(),
+                children,
+            }))
+        };
+        // Empty / whitespace-only content (directly or nested) is blank —
+        // the markdown `| | |` header case.
+        assert!(node_text_is_blank(&[]));
+        assert!(node_text_is_blank(&[txt("   ")]));
+        assert!(node_text_is_blank(&[tag("p", vec![txt("")])]));
+        // Visible text — directly or nested — is not blank.
+        assert!(!node_text_is_blank(&[txt("Date")]));
+        assert!(!node_text_is_blank(&[tag("strong", vec![txt("To:")])]));
+        // An image/media tag counts as visible even with no text.
+        assert!(!node_text_is_blank(&[tag("img", vec![])]));
     }
 
     #[test]

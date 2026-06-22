@@ -460,6 +460,12 @@ pub struct Style {
     pub table_cell_padding: f32,
     pub table_border_color: ColorRgb,
     pub table_border_thickness: f32,
+    /// Colour of the table's outer frame — the top/bottom rules (and the
+    /// left/right rules in `grid` mode). Unset means edges match the
+    /// internal `table_border_color`; a darker edge gives a booktabs look.
+    pub table_edge_color: Option<ColorRgb>,
+    /// Thickness of those outer rules; defaults to `table_border_thickness`.
+    pub table_edge_thickness: Option<f32>,
     pub table_header_background: ColorRgb,
     pub table_header_text_color: ColorRgb,
     pub table_space_after: f32,
@@ -551,6 +557,8 @@ impl Default for Style {
             table_cell_padding: 6.0,
             table_border_color: ColorRgb::new(210, 215, 225),
             table_border_thickness: 0.5,
+            table_edge_color: None,
+            table_edge_thickness: None,
             table_header_background: ColorRgb::new(240, 242, 246),
             table_header_text_color: ColorRgb::new(20, 30, 50),
             table_space_after: 12.0,
@@ -1380,6 +1388,19 @@ font_size = 32.0
         assert_eq!(horizontal.table_borders, TableBorders::Horizontal);
         let none = Style::from_toml_str("table_borders = \"none\"").unwrap();
         assert_eq!(none.table_borders, TableBorders::None);
+    }
+
+    #[test]
+    fn table_edge_color_optional() {
+        // Unset by default — edges match the internal border colour.
+        let d = Style::default();
+        assert!(d.table_edge_color.is_none());
+        assert!(d.table_edge_thickness.is_none());
+        // A darker, thicker edge (booktabs look) parses.
+        let s = Style::from_toml_str("table_edge_color = [0, 0, 0]\ntable_edge_thickness = 1.0")
+            .unwrap();
+        assert_eq!(s.table_edge_color, Some(ColorRgb::new(0, 0, 0)));
+        assert_eq!(s.table_edge_thickness, Some(1.0));
     }
 
     #[test]

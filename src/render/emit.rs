@@ -584,6 +584,7 @@ fn emit_block(
             border_color,
             border_thickness,
             border_style,
+            edge,
             caption: _,
         } => {
             let total_width: f32 = column_widths.iter().sum::<f32>()
@@ -650,33 +651,71 @@ fn emit_block(
             //    separators (no verticals); `None` draws nothing. Drawn last
             //    so they sit on top of any header background that bleeds.
             if !matches!(border_style, TableBorders::None) {
-                let stroke = Stroke {
+                // Internal rules use `border_color`; the outer frame (top/
+                // bottom, plus grid left/right) uses `edge` when set, else
+                // the same border colour. Internals are drawn first so the
+                // edge colour wins where they meet at the corners.
+                let (edge_paint, edge_w) = (*edge).unwrap_or((*border_color, *border_thickness));
+                let border_stroke = Stroke {
                     paint: (*border_color).into(),
                     width: *border_thickness,
                     opacity: NormalizedF32::ONE,
                     ..Default::default()
                 };
-                surface.set_stroke(Some(stroke));
+                let edge_stroke = Stroke {
+                    paint: edge_paint.into(),
+                    width: edge_w,
+                    opacity: NormalizedF32::ONE,
+                    ..Default::default()
+                };
 
-                // Horizontals (drawn for both `Grid` and `Horizontal`).
+                // Horizontal rule y positions: top, between each row, bottom.
+                let mut h_ys = Vec::with_capacity(rows.len() + 1);
                 let mut h_y = y + *border_thickness * 0.5;
-                line(surface, *x, h_y, *x + total_width, h_y);
+                h_ys.push(h_y);
                 for row in rows {
                     h_y += row.height + *border_thickness;
-                    line(surface, *x, h_y, *x + total_width, h_y);
+                    h_ys.push(h_y);
+                }
+                let last_h = h_ys.len() - 1;
+
+                // Internal horizontals (drawn for both `Grid` and `Horizontal`).
+                surface.set_stroke(Some(border_stroke));
+                for (i, &hy) in h_ys.iter().enumerate() {
+                    if i != 0 && i != last_h {
+                        line(surface, *x, hy, *x + total_width, hy);
+                    }
                 }
 
-                // Verticals (`Grid` only).
+                // Verticals (`Grid` only): internal in border colour, the
+                // left/right frame in the edge colour.
                 if matches!(border_style, TableBorders::Grid) {
                     let top = y;
                     let bottom = y + total_height;
+                    let mut v_xs = Vec::with_capacity(column_widths.len() + 1);
                     let mut v_x = *x + *border_thickness * 0.5;
-                    line(surface, v_x, top, v_x, bottom);
+                    v_xs.push(v_x);
                     for col_w in column_widths {
                         v_x += *col_w + *border_thickness;
-                        line(surface, v_x, top, v_x, bottom);
+                        v_xs.push(v_x);
                     }
+                    let last_v = v_xs.len() - 1;
+                    for (i, &vx) in v_xs.iter().enumerate() {
+                        if i != 0 && i != last_v {
+                            line(surface, vx, top, vx, bottom);
+                        }
+                    }
+                    surface.set_stroke(Some(edge_stroke));
+                    line(surface, v_xs[0], top, v_xs[0], bottom);
+                    line(surface, v_xs[last_v], top, v_xs[last_v], bottom);
+                } else {
+                    surface.set_stroke(Some(edge_stroke));
                 }
+
+                // Outer horizontals (edge colour): top + bottom.
+                line(surface, *x, h_ys[0], *x + total_width, h_ys[0]);
+                line(surface, *x, h_ys[last_h], *x + total_width, h_ys[last_h]);
+
                 surface.set_stroke(None);
             }
         }

@@ -163,16 +163,18 @@ pub fn emit_notice_banner(
     let label_x = (right - label_w).max(left);
 
     // ── Right icon: centred over its label (or flush-right when there is
-    //    no label). ─────────────────────────────────────────────────────
+    //    no label). Its x and the disclaimer's wrap width are fixed now,
+    //    but it is drawn later — once the label's y is known — so it can
+    //    be lowered toward the label. ──────────────────────────────────
     let mut right_block_left = right; // disclaimer wraps up to here
+    let mut icon_x = 0.0;
     let mut icon_h = 0.0;
     if let Some(icon) = &banner.icon {
-        let icon_x = if label_layout.is_some() {
+        icon_x = if label_layout.is_some() {
             (label_x + (label_w - icon.width) / 2.0).clamp(left, right - icon.width)
         } else {
             right - icon.width
         };
-        draw_logo(surface, icon, icon_x, band_top, assets, media_cache);
         right_block_left = icon_x - 12.0;
         icon_h = icon.height;
     }
@@ -217,6 +219,19 @@ pub fn emit_notice_banner(
     // Close the band with a rule below the flowed content (clamped to the
     // reserved band bottom so it never crosses into the body).
     let rule_y = (y + 3.0).min(band_bottom);
+
+    // The label sits just above the rule (and clear of the icon above it).
+    let line_h = banner.label_font_size * 1.25;
+    let label_top = (rule_y - line_h - 3.0).max(band_top + icon_h + 2.0);
+
+    // Draw the icon, lowered halfway down the gap to the label so the two
+    // read as a group rather than the icon floating at the band top.
+    if let Some(icon) = &banner.icon {
+        let gap = (label_top - (band_top + icon.height)).max(0.0);
+        let icon_y = band_top + gap * 0.5;
+        draw_logo(surface, icon, icon_x, icon_y, assets, media_cache);
+    }
+
     if banner.rule {
         stroke_hline(
             surface,
@@ -229,10 +244,8 @@ pub fn emit_notice_banner(
     }
 
     // ── Icon label: right-aligned to the margin (with the icon centred
-    //    over it), sitting just above the rule and clear of the icon. ────
+    //    over it), sitting just above the rule. ─────────────────────────
     if let Some(layout) = &label_layout {
-        let line_h = banner.label_font_size * 1.25;
-        let label_top = (rule_y - line_h - 3.0).max(band_top + icon_h + 2.0);
         emit_layout(
             surface,
             layout,

@@ -1723,8 +1723,6 @@ fn layout_list(
     ctx: &mut LayoutCtx<'_>,
 ) -> Vec<Block> {
     let indent = ctx.style.list_indent;
-    let content_x = x + indent;
-    let content_w = width - indent;
     let marker_x = x;
 
     // Iterate <li> children; non-li children (rare) are skipped.
@@ -1799,6 +1797,23 @@ fn layout_list(
         } else {
             None
         };
+
+        // Where the item's text begins. A badge keeps the full indent as
+        // its circular gutter; a plain bullet/number sits at the column's
+        // left edge with just `list_marker_gap` before the text, so a
+        // narrow marker never leaves a wide gap.
+        let marker_w = marker_layout
+            .lines()
+            .next()
+            .map(|l| l.metrics().advance)
+            .unwrap_or(0.0);
+        let text_indent = if badge_on {
+            indent
+        } else {
+            marker_w + ctx.style.list_marker_gap
+        };
+        let content_x = x + text_indent;
+        let content_w = (width - text_indent).max(0.0);
 
         // Lay out the item body one nesting level deeper so a nested
         // ordered list picks the next numbering style. <li> children may

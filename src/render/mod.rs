@@ -26,7 +26,7 @@ use krilla::Document;
 use krilla::SerializeSettings;
 use krilla::action::{Action, LinkAction};
 use krilla::annotation::{Annotation, LinkAnnotation, Target};
-use krilla::configure::{Configuration, Validator};
+use krilla::configure::{Accessibility, Archival, ConfigurationBuilder};
 use krilla::destination::XyzDestination;
 use krilla::geom::{Point, Rect};
 use krilla::metadata::Metadata;
@@ -1146,19 +1146,31 @@ fn walk_for_headings(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Hea
 /// Construct a krilla `Document` configured for the requested PDF
 /// export profile (PDF/A variant, etc.). Default is unvalidated.
 fn build_document(profile: PdfExportProfile) -> Document {
-    let validator = match profile {
-        PdfExportProfile::None => Validator::None,
-        PdfExportProfile::A1B => Validator::A1_B,
-        PdfExportProfile::A2B => Validator::A2_B,
-        PdfExportProfile::A3B => Validator::A3_B,
-        PdfExportProfile::A4 => Validator::A4,
-        PdfExportProfile::UA1 => Validator::UA1,
+    // krilla 0.8 splits validation into independent archival (PDF/A) and
+    // accessibility (PDF/UA) families, built via `ConfigurationBuilder`.
+    let builder = match profile {
+        PdfExportProfile::None => return Document::new(),
+        PdfExportProfile::A1B => {
+            ConfigurationBuilder::new().with_archival_validator(Archival::A1_B)
+        }
+        PdfExportProfile::A2B => {
+            ConfigurationBuilder::new().with_archival_validator(Archival::A2_B)
+        }
+        PdfExportProfile::A3B => {
+            ConfigurationBuilder::new().with_archival_validator(Archival::A3_B)
+        }
+        PdfExportProfile::A4 => ConfigurationBuilder::new().with_archival_validator(Archival::A4),
+        PdfExportProfile::UA1 => {
+            ConfigurationBuilder::new().with_accessibility_validator(Accessibility::UA1)
+        }
     };
-    if matches!(profile, PdfExportProfile::None) {
-        return Document::new();
-    }
+    // Each profile sets a single validator with a valid PDF-version range,
+    // so `finish` can't fail here.
+    let configuration = builder
+        .finish()
+        .expect("single validator always yields a valid configuration");
     let settings = SerializeSettings {
-        configuration: Configuration::new_with_validator(validator),
+        configuration,
         ..Default::default()
     };
     Document::new_with(settings)

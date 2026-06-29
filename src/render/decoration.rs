@@ -12,7 +12,7 @@ use krilla::geom::{PathBuilder, Point, Size, Transform};
 use krilla::image::Image as KrillaImage;
 use krilla::num::NormalizedF32;
 use krilla::paint::Stroke;
-use krilla::tagging::{ArtifactType, ContentTag};
+use krilla::tagging::{Artifact, ArtifactType, ContentTag};
 use krilla::text::Font;
 use krilla_svg::{SurfaceExt, SvgSettings};
 use parley::{FontContext, LayoutContext};
@@ -57,7 +57,9 @@ pub fn emit_header(
 ) {
     let text_top = header.margin_from_edge;
     if tagged {
-        surface.start_tagged(ContentTag::Artifact(ArtifactType::Header));
+        surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+            ArtifactType::Header,
+        )));
     }
     emit_three_slots(
         surface,
@@ -96,7 +98,9 @@ pub fn emit_footer(
     let text_height = footer.font_size * 1.2;
     let text_top = style.page_height - footer.margin_from_edge - text_height;
     if tagged {
-        surface.start_tagged(ContentTag::Artifact(ArtifactType::Footer));
+        surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+            ArtifactType::Footer,
+        )));
     }
     if footer.rule {
         let rule_y = text_top - footer.rule_gap;
@@ -143,7 +147,9 @@ pub fn emit_notice_banner(
     let band_bottom = band_top + banner.height;
 
     if tagged {
-        surface.start_tagged(ContentTag::Artifact(ArtifactType::Header));
+        surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+            ArtifactType::Header,
+        )));
     }
 
     // ── The icon label is built up front so the right-hand icon can be
@@ -507,7 +513,9 @@ pub fn emit_watermark(
     let opacity =
         NormalizedF32::new(watermark.opacity.clamp(0.0, 1.0)).unwrap_or(NormalizedF32::ONE);
     if tagged {
-        surface.start_tagged(ContentTag::Artifact(krilla::tagging::ArtifactType::Page));
+        surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+            krilla::tagging::ArtifactType::Page,
+        )));
     }
     match &watermark.kind {
         super::style::WatermarkKind::Image(img) => {

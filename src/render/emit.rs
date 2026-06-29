@@ -7,7 +7,8 @@ use krilla::geom::{PathBuilder, Point, Size, Transform};
 use krilla::num::NormalizedF32;
 use krilla::paint::{Fill, Stroke};
 use krilla::tagging::{
-    ArtifactType, ContentTag, Identifier, Node as TagNode, SpanTag, Tag, TagGroup, TagKind, kind,
+    Artifact, ArtifactType, ContentTag, Identifier, Node as TagNode, SpanTag, Tag, TagGroup,
+    TagKind, kind,
 };
 use krilla::text::Font;
 use krilla_svg::{SurfaceExt, SvgSettings};
@@ -482,7 +483,9 @@ fn emit_block(
             {
                 let icon_y = box_top + *padding;
                 if tags.enabled {
-                    surface.start_tagged(ContentTag::Artifact(ArtifactType::Other));
+                    surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+                        ArtifactType::Other,
+                    )));
                 }
                 surface.push_transform(&Transform::from_translate(icon.x, icon_y));
                 match &icon.decoded {
@@ -530,7 +533,9 @@ fn emit_block(
                 // The circle is decorative — the marker glyph (tagged Lbl
                 // below) carries the meaning — so mark it an Artifact.
                 if tags.enabled {
-                    surface.start_tagged(ContentTag::Artifact(ArtifactType::Other));
+                    surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+                        ArtifactType::Other,
+                    )));
                 }
                 fill_circle(surface, cx, cy, b.diameter * 0.5, b.fill);
                 if tags.enabled {

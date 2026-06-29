@@ -20,10 +20,10 @@ flux-types = { path = "../flux-types" }
 # PDF / layout stack — these used to be `*.workspace = true` against
 # the markdoc workspace. Now standalone: pin the same versions
 # inline. Keep these in lockstep with leptos-markdoc when shared.
-krilla     = "0.7"
-krilla-svg = "0.7"
-parley     = "0.9"
-usvg       = "0.45"   # pinned to match krilla-svg 0.7's internal usvg
+krilla     = "0.8"
+krilla-svg = "0.8"
+parley     = "0.11"
+usvg       = "0.47"   # pinned to match krilla-svg 0.8's internal usvg
 fontdb     = "0.23"
 image      = "0.25"
 

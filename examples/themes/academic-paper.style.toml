@@ -2,8 +2,9 @@
 #
 # US Letter, narrow margins, body 11pt with looser leading. Footnotes
 # render in the per-page pool. No headers/footers — page numbers go in
-# the footer slot only. Hyphenation enabled for clean justified-feel
-# wrapping.
+# the footer slot only. Body text is justified, with hyphenation on so
+# wrapped lines break inside long words and the inter-word gaps stay
+# even.
 
 page_width  = 612.0   # 8.5 in
 page_height = 792.0   # 11 in
@@ -13,6 +14,7 @@ margin_y    = 72.0
 body_font_size      = 11.0
 body_line_height    = 1.6
 paragraph_space_after = 6.0
+text_align          = "justify"
 
 caption_position    = "below"
 

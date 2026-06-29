@@ -8,12 +8,12 @@ just the parts that matter and inherit the rest.
 | File | Use for | Notable features |
 |------|---------|------------------|
 | `technical-manual.style.toml` | Product manuals, reference docs | A4, ToC + LoF + LoT, chapter/section header, page-of-total footer, hyphenation |
-| `academic-paper.style.toml` | Papers, theses | US Letter, looser leading, footnote pool, page-number footer |
+| `academic-paper.style.toml` | Papers, theses | US Letter, looser leading, justified body, footnote pool, page-number footer |
 | `draft-report.style.toml` | Internal review reports | PDF/UA-1 export, "DRAFT" diagonal watermark, build-date footer |
 | `letter.style.toml` | Letters, memos | Generous margins, no decoration, single-page friendly |
 | `book.style.toml` | Long-form publications | 6×9", verso/recto headers (chapter on recto, title on verso), small body font, ToC |
 | `release-notes.style.toml` | Changelogs, release notes | Compact dense layout, version in header, no front matter |
-| `whitepaper.style.toml` | Sales / position papers | Large title page from frontmatter, ToC at start, generous margins, hyphenation |
+| `whitepaper.style.toml` | Sales / position papers | Large title page from frontmatter, ToC at start, generous margins, justified body, hyphenation |
 | `cheatsheet.style.toml` | Quick references, CLI cards | Landscape A4, narrow margins, dense body; ideal for one-page reference cards |
 | `poster-a3.style.toml` | A3 wall posters (297 × 420 mm) | Single page, body text sized for ~1.5 m reading distance |
 | `poster-a2.style.toml` | A2 conference-board posters (420 × 594 mm) | Single page, body text sized for 2-3 m reading distance |
@@ -32,7 +32,9 @@ override what you want. Every section is documented in
   `left`, `center`, `right` template strings
 - `{page}`, `{total}`, `{title}`, `{chapter}`, `{section}`, `{date}`
 - `[watermark]` for diagonal-text or full-bleed-image overlays
-- `[hyphenation]` to insert soft hyphens (English-US bundled)
+- `text_align = "left" | "justify" | "center" | "right"` for body prose
+- `[hyphenation]` to insert soft hyphens (English-US bundled) — pairs
+  well with `text_align = "justify"` for even inter-word spacing
 - `font_paths = [...]` to load extra `.ttf`/`.otf` families
 - `body_font_families = ["My Custom Family", "fallback"]`
 - `[coverpage]` to synthesise a cover page from frontmatter

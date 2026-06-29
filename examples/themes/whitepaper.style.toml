@@ -2,9 +2,10 @@
 #
 # Commercial whitepaper / position paper layout. A4 with generous
 # margins, large title page driven by frontmatter, ToC at the start,
-# subdued footer with page numbers and the document title, soft
-# hyphenation for justified-feel wrapping. Suitable for sales-led
-# explainers, internal positioning docs, etc.
+# subdued footer with page numbers and the document title. Body text is
+# justified, with soft hyphenation so wrapped lines break inside long
+# words. Suitable for sales-led explainers, internal positioning docs,
+# etc.
 
 page_width  = 595.0
 page_height = 842.0
@@ -14,6 +15,7 @@ margin_y    = 80.0
 body_font_size      = 11.0
 body_line_height    = 1.55
 paragraph_space_after = 9.0
+text_align          = "justify"
 
 [hyphenation]
 enabled = true

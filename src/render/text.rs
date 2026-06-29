@@ -11,7 +11,9 @@ use krilla::paint::Fill;
 use krilla::tagging::{ContentTag, Identifier, SpanTag};
 use krilla::text::{Font, GlyphId, KrillaGlyph};
 use parley::layout::Alignment;
-use parley::style::{FontFamily, FontFamilyName, FontStyle, FontWeight, LineHeight, StyleProperty};
+use parley::style::{
+    FontFamily, FontFamilyName, FontStyle, FontWeight, LineHeight, OverflowWrap, StyleProperty,
+};
 use parley::{FontContext, Layout, LayoutContext};
 
 use super::inline::{InlineProp, InlineRange, LinkRange};
@@ -107,6 +109,12 @@ pub fn build_layout(
     builder.push_default(StyleProperty::FontWeight(FontWeight::new(
         style.font_weight,
     )));
+    // Break inside a word only when it would otherwise overflow the
+    // column (a long URL, part number, file path, …). Words that fit are
+    // unaffected, so normal prose wraps exactly as before; this just
+    // stops over-wide unbreakable tokens running off the page or out of a
+    // table cell / code block.
+    builder.push_default(StyleProperty::OverflowWrap(OverflowWrap::Anywhere));
     if style.italic {
         builder.push_default(StyleProperty::FontStyle(FontStyle::Italic));
     }

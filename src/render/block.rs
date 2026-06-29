@@ -2679,6 +2679,18 @@ fn compute_auto_column_widths(
         }
     }
 
+    // A single over-wide unbreakable token (a long URL, part number, …)
+    // would otherwise force its column's minimum to the full token width
+    // and squeeze every other column to nothing. Since `overflow-wrap:
+    // anywhere` lets such a token break, cap each column's minimum at an
+    // equal share so it can't dominate; the token then wraps within
+    // whatever width the column is given. Columns still take their
+    // natural width when the table has room (handled by `distribute`).
+    let fair_min = inner_width / num_cols as f32;
+    for m in &mut col_min {
+        *m = m.min(fair_min);
+    }
+
     distribute(col_min, col_max, inner_width)
 }
 
@@ -3067,6 +3079,22 @@ mod tests {
         assert_eq!(format_ordered_marker(14, UpperRoman), "XIV");
         // Out-of-range roman falls back to decimal.
         assert_eq!(format_ordered_marker(4000, LowerRoman), "4000");
+    }
+
+    #[test]
+    fn overwide_token_does_not_squeeze_other_columns() {
+        // A 2-column table whose column 1 holds an unbreakable token far
+        // wider than the page (min == max == 800pt) while column 0 needs
+        // only 30pt. Without capping, the proportional min-scaling starves
+        // column 0 below its natural width (the "FieldValue" squeeze).
+        let starved = distribute(vec![30.0, 800.0], vec![30.0, 800.0], 470.0);
+        assert!(starved[0] < 25.0, "col 0 starved: {}", starved[0]);
+        // Capping column 1's minimum at the fair share (470/2 = 235pt)
+        // lets the token wrap (overflow-wrap: anywhere) so column 0 keeps
+        // its natural 30pt and column 1 absorbs the rest.
+        let ok = distribute(vec![30.0, 235.0], vec![30.0, 800.0], 470.0);
+        assert!((ok[0] - 30.0).abs() < 0.5, "col 0 width: {}", ok[0]);
+        assert!(ok[1] > 400.0, "col 1 width: {}", ok[1]);
     }
 
     #[test]

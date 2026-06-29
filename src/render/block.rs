@@ -2189,24 +2189,42 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
             size: ctx.style.callout_icon_size,
         })
     };
-    let icon_gutter = icon
-        .as_ref()
-        .map(|i| i.size + ctx.style.callout_icon_gap)
-        .unwrap_or(0.0);
+    let is_rules = matches!(cs.decoration, super::style::CalloutDecoration::Rules);
+    let icon_size = icon.as_ref().map(|i| i.size).unwrap_or(0.0);
+    // The box framing indents the label + body past an icon gutter so they
+    // sit beside the icon. The rules framing instead flows the body the
+    // full width beneath the icon, aligned with the icon's left edge.
+    let icon_gutter = if is_rules {
+        0.0
+    } else {
+        icon.as_ref()
+            .map(|i| i.size + ctx.style.callout_icon_gap)
+            .unwrap_or(0.0)
+    };
     let content_x = inner_x + icon_gutter;
     let content_w = inner_w - icon_gutter;
 
     // Optional bold label as the first child line.
     let mut children: Vec<Block> = Vec::new();
     if !cs.label.trim().is_empty() {
-        children.push(build_callout_label_block(
+        let mut label_block = build_callout_label_block(
             cs.label.trim(),
             content_x,
             content_w,
             cs.label_color.unwrap_or(ctx.style.text_color).into(),
             cs.label_centered,
             ctx,
-        ));
+        );
+        // In the rules framing the body flows beneath the icon, so the
+        // label row reserves the icon's height to push the body clear.
+        if is_rules && icon_size > label_block.height {
+            label_block.height = icon_size;
+        }
+        children.push(label_block);
+    } else if is_rules && icon_size > 0.0 {
+        // No label: reserve the icon's height before the body so it
+        // doesn't render on top of the icon.
+        children.push(spacer_block(icon_size));
     }
 
     // markdoc's parser doesn't wrap a callout's text content in a `<p>` —

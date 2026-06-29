@@ -18,7 +18,9 @@ use super::paginate::paginate as paginate_blocks;
 use super::style::MarkerSequence;
 use super::style::Style;
 use super::style::TableColumnSizing;
-use super::text::{TextStyle, build_layout, measure_first_line_width, monospace_families};
+use super::text::{
+    TextStyle, build_layout, build_layout_aligned, measure_first_line_width, monospace_families,
+};
 
 /// One unit of paginatable content.
 #[derive(Clone)]
@@ -1334,11 +1336,12 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
         font_families: ctx.body_families,
         italic: false,
     };
-    let layout = build_layout(
+    let layout = build_layout_aligned(
         &inlines.text,
         &inlines.style_ranges,
         &style,
         width,
+        ctx.style.text_align.to_parley(),
         ctx.font_cx,
         ctx.layout_cx,
     );

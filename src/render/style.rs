@@ -374,6 +374,11 @@ pub struct Style {
     pub body_line_height: f32,
     pub paragraph_space_after: f32,
     pub text_color: ColorRgb,
+    /// Horizontal alignment for body prose (paragraphs, list-item and
+    /// callout bodies). Headings, captions and table cells are
+    /// unaffected. Defaults to `left`; `justify` spreads every line but
+    /// the last to the column width.
+    pub text_align: TextAlign,
     /// How `[text](url)` links are visually distinguished from body
     /// text. The PDF link annotation is created regardless; this is
     /// purely the visual cue so a reader spots the link before they
@@ -511,6 +516,7 @@ impl Default for Style {
             page_height: 842.0, // A4 — real page size now that we paginate
             margin_x: 72.0,
             margin_y: 72.0,
+            text_align: TextAlign::default(),
             body_font_size: 11.0,
             body_line_height: 1.5,
             paragraph_space_after: 8.0,
@@ -672,6 +678,34 @@ pub enum CoverAlign {
     /// Flush against the left margin — fits a "title page" look where
     /// the title and metadata stack at the top-left.
     Left,
+}
+
+/// Horizontal alignment for body prose. Mirrors CSS `text-align`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlign {
+    /// Flush against the start (left for LTR) edge — the default.
+    #[default]
+    Left,
+    /// Spread every line but the last to fill the column width.
+    Justify,
+    /// Centre each line within the column.
+    Center,
+    /// Flush against the end (right for LTR) edge.
+    Right,
+}
+
+impl TextAlign {
+    /// The parley alignment this maps to.
+    pub fn to_parley(self) -> parley::layout::Alignment {
+        use parley::layout::Alignment;
+        match self {
+            TextAlign::Left => Alignment::Start,
+            TextAlign::Justify => Alignment::Justify,
+            TextAlign::Center => Alignment::Center,
+            TextAlign::Right => Alignment::End,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1388,6 +1422,21 @@ font_size = 32.0
         assert_eq!(horizontal.table_borders, TableBorders::Horizontal);
         let none = Style::from_toml_str("table_borders = \"none\"").unwrap();
         assert_eq!(none.table_borders, TableBorders::None);
+    }
+
+    #[test]
+    fn text_align_defaults_left_and_parses() {
+        assert_eq!(Style::default().text_align, TextAlign::Left);
+        assert_eq!(
+            Style::from_toml_str("text_align = \"justify\"")
+                .unwrap()
+                .text_align,
+            TextAlign::Justify
+        );
+        assert_eq!(
+            TextAlign::Justify.to_parley(),
+            parley::layout::Alignment::Justify
+        );
     }
 
     #[test]

@@ -367,6 +367,17 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                         }
                         continue;
                     }
+                    "color" | "c" => {
+                        // Inline colour span:
+                        //   {% color value="#d21e1e" %}red text{% /color %}
+                        // Maps the wrapped text to an `InlineProp::Color`
+                        // range; an unparsable / missing `value` leaves the
+                        // text in the default colour.
+                        match t.attributes.get("value") {
+                            Some(Scalar::String(s)) => parse_css_color(s).map(InlineProp::Color),
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 };
                 let start = out.text.len();
@@ -386,9 +397,50 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
     }
 }
 
+/// Parse a CSS-ish colour for the `{% color %}` inline tag: a `#rgb` or
+/// `#rrggbb` hex string, or one of a small set of named colours. Returns
+/// `None` for anything unrecognised.
+fn parse_css_color(s: &str) -> Option<krilla::color::rgb::Color> {
+    let s = s.trim();
+    if let Some(hex) = s.strip_prefix('#') {
+        let (r, g, b) = match hex.len() {
+            3 => {
+                let d = |i: usize| u8::from_str_radix(&hex[i..i + 1], 16).ok().map(|n| n * 17);
+                (d(0)?, d(1)?, d(2)?)
+            }
+            6 => {
+                let d = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+                (d(0)?, d(2)?, d(4)?)
+            }
+            _ => return None,
+        };
+        return Some(krilla::color::rgb::Color::new(r, g, b));
+    }
+    let (r, g, b) = match s.to_ascii_lowercase().as_str() {
+        "red" => (204, 0, 0),
+        "green" => (0, 128, 0),
+        "blue" => (0, 0, 204),
+        "orange" => (255, 120, 0),
+        "black" => (0, 0, 0),
+        "white" => (255, 255, 255),
+        _ => return None,
+    };
+    Some(krilla::color::rgb::Color::new(r, g, b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_hex_and_named_colors() {
+        use krilla::color::rgb::Color;
+        assert_eq!(parse_css_color("#d21e1e"), Some(Color::new(210, 30, 30)));
+        assert_eq!(parse_css_color("#f00"), Some(Color::new(255, 0, 0)));
+        assert_eq!(parse_css_color(" red "), Some(Color::new(204, 0, 0)));
+        assert_eq!(parse_css_color("not-a-color"), None);
+        assert_eq!(parse_css_color("#12"), None);
+    }
 
     #[test]
     fn navigable_intra_doc_anchor() {

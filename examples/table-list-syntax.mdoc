@@ -1,0 +1,74 @@
+---
+title: Markdoc list-syntax tables
+---
+
+# Markdoc list-syntax tables
+
+The Markdoc list-syntax table (cells as `*` items, rows separated by `---`)
+builds the same table structure as a Markdown pipe table. The first row is the
+header unless the table starts with `---`.
+
+## Basic
+
+{% table %}
+* Heading 1
+* Heading 2
+---
+* Row 1 Cell 1
+* Row 1 Cell 2
+---
+* Row 2 Cell 1
+* Row 2 Cell 2
+{% /table %}
+
+## Without a header
+
+{% table %}
+---
+* foo
+* bar
+---
+* foo
+* bar
+{% /table %}
+
+## Rich content in cells
+
+Cells are parsed as Markdown, so they can hold code, lists, and paragraphs —
+including a `list` tag with a custom marker.
+
+{% table %}
+* Foo
+* Bar
+* Baz
+---
+*
+  ```
+  puts "code here"
+  ```
+*
+  {% list type="checkmark" %}
+  * Bulleted list in table
+  * Second item
+  {% /list %}
+* Text in a table
+{% /table %}
+
+## Column alignment
+
+An `align` annotation on a header cell aligns the whole column; an `align` on
+a body cell overrides just that cell.
+
+{% table %}
+* Left
+* Centre {% align="center" %}
+* Right {% align="right" %}
+---
+* foo
+* bar
+* baz
+---
+* longer text
+* bar {% align="right" %}
+* 1,234
+{% /table %}

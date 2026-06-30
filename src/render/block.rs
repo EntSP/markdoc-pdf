@@ -589,6 +589,10 @@ pub enum BlockDraw {
         /// When set, the marker is drawn centred inside a filled circle
         /// instead of as plain inline text.
         badge: Option<MarkerBadge>,
+        /// When set, draw a vector checkmark in this colour instead of the
+        /// text marker — for `{% list type="checkmark" %}`, whose `✓` glyph
+        /// many fonts (incl. the default) lack.
+        check: Option<rgb::Color>,
     },
     /// A pre-decoded raster image, drawn at `(x, y_top)` with the given
     /// display size. `caption` is used for the List of Figures.
@@ -1019,8 +1023,12 @@ fn layout_node(
             layout_heading(tag, level, x, width, ctx)
         }
 
-        "ul" => layout_list(tag, ListKind::Unordered, x, width, ctx),
-        "ol" => layout_list(tag, ListKind::Ordered, x, width, ctx),
+        "ul" => layout_list(tag, ListKind::Unordered, None, x, width, ctx),
+        "ol" => layout_list(tag, ListKind::Ordered, None, x, width, ctx),
+
+        // `{% list type="checkmark" %}` — render the wrapped list with a
+        // custom marker (checkmark / dash / none).
+        "list" => layout_list_tag(tag, x, width, ctx),
 
         "blockquote" => layout_blockquote(tag, x, width, ctx),
 
@@ -1732,9 +1740,39 @@ enum ListKind {
     Ordered,
 }
 
+/// `{% list type="…" %}` wraps a `ul`/`ol`; render it with a custom marker.
+/// An unknown or absent `type` falls back to the normal bullet / number.
+fn layout_list_tag(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let marker = list_marker_glyph(tag);
+    let inner = tag.children.iter().find_map(|c| match c {
+        RenderableTreeNode::Tag(t) if t.name == "ul" => Some((t, ListKind::Unordered)),
+        RenderableTreeNode::Tag(t) if t.name == "ol" => Some((t, ListKind::Ordered)),
+        _ => None,
+    });
+    match inner {
+        Some((ul, kind)) => layout_list(ul, kind, marker, x, width, ctx),
+        None => layout_children(&tag.children, x, width, ctx),
+    }
+}
+
+/// The marker glyph for a `{% list type=… %}`: `checkmark` → `✓`, `dash` →
+/// `–`, `none` → no marker. Anything else (or absent) → `None` (default list).
+fn list_marker_glyph(tag: &Tag) -> Option<&'static str> {
+    match tag.attributes.get("type") {
+        Some(Scalar::String(s)) => match s.as_str() {
+            "checkmark" => Some("✓"),
+            "dash" => Some("–"),
+            "none" => Some(""),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn layout_list(
     tag: &Tag,
     kind: ListKind,
+    marker: Option<&str>,
     x: f32,
     width: f32,
     ctx: &mut LayoutCtx<'_>,
@@ -1755,10 +1793,13 @@ fn layout_list(
             continue;
         };
         let ordered = matches!(kind, ListKind::Ordered);
-        let badge_on = ordered && ctx.style.list_marker.badge;
-        let marker_text = match kind {
-            ListKind::Unordered => "•".to_string(),
-            ListKind::Ordered => {
+        // A `{% list type=… %}` marker override (e.g. a checkmark) replaces
+        // the bullet/number and is never drawn as a circle badge.
+        let badge_on = marker.is_none() && ordered && ctx.style.list_marker.badge;
+        let marker_text = match (marker, kind) {
+            (Some(m), _) => m.to_string(),
+            (None, ListKind::Unordered) => "•".to_string(),
+            (None, ListKind::Ordered) => {
                 let seq = ctx.style.list_marker.sequence_for_depth(ctx.list_depth);
                 let label = format_ordered_marker(idx + 1, seq);
                 // A badge delimits the marker visually, so the trailing
@@ -1777,6 +1818,9 @@ fn layout_list(
         } else {
             ctx.style.text_color.into()
         };
+        // A `{% list type="checkmark" %}` marker is drawn as a vector (the
+        // `✓` glyph is widely missing) in the marker colour.
+        let check = (marker == Some("✓")).then_some(marker_color);
         let marker_style = TextStyle {
             font_size: ctx.style.body_font_size,
             font_weight: 400.0,
@@ -1857,6 +1901,7 @@ fn layout_list(
                 body,
                 ordered,
                 badge,
+                check,
             },
             outline: None,
             anchor_id: None,
@@ -2798,6 +2843,21 @@ fn node_text_is_blank(nodes: &[RenderableTreeNode]) -> bool {
     })
 }
 
+/// A cell's own alignment override from its `align` attribute (set by the
+/// list-syntax `{% align %}` annotation), if any.
+fn cell_align(cell: &Tag) -> Option<parley::layout::Alignment> {
+    use parley::layout::Alignment;
+    match cell.attributes.get("align") {
+        Some(Scalar::String(s)) => match s.as_str() {
+            "center" => Some(Alignment::Center),
+            "right" => Some(Alignment::End),
+            "left" => Some(Alignment::Start),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn layout_row_source(
     src: &RowSource<'_>,
@@ -2818,10 +2878,13 @@ fn layout_row_source(
         let cell_text_width = (column_widths[col] - 2.0 * padding).max(0.0);
         // A header column makes column 0 a header cell even in body rows.
         let cell_is_header = is_header || (header_column && col == 0);
-        let align = column_aligns
-            .get(col)
-            .copied()
-            .unwrap_or(parley::layout::Alignment::Start);
+        // A cell's own `{% align %}` overrides the column alignment.
+        let align = cell_align(cell_tag).unwrap_or_else(|| {
+            column_aligns
+                .get(col)
+                .copied()
+                .unwrap_or(parley::layout::Alignment::Start)
+        });
         let blocks = layout_cell_content(
             cell_tag,
             cell_x,
@@ -3005,6 +3068,7 @@ fn layout_cell_content(
                 t.name.as_str(),
                 "p" | "ul"
                     | "ol"
+                    | "list"
                     | "blockquote"
                     | "pre"
                     | "callout"

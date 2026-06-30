@@ -523,6 +523,7 @@ fn emit_block(
             body,
             ordered: _,
             badge,
+            check,
         } => {
             // When the marker is badged, draw its filled circle first
             // (so the glyphs sit on top) and centre the marker over the
@@ -558,16 +559,20 @@ fn emit_block(
             } else {
                 None
             };
-            emit_layout(
-                surface,
-                marker,
-                marker_text,
-                marker_origin_x,
-                y,
-                font_cache,
-                0..marker_lines,
-                0.0,
-            );
+            if let Some(color) = check {
+                draw_checkmark(surface, marker, marker_origin_x, y, *color);
+            } else {
+                emit_layout(
+                    surface,
+                    marker,
+                    marker_text,
+                    marker_origin_x,
+                    y,
+                    font_cache,
+                    0..marker_lines,
+                    0.0,
+                );
+            }
             if let Some(id) = marker_id {
                 surface.end_tagged();
                 let mut g = TagGroup::new(TagKind::Lbl(Tag::<kind::Lbl>::Lbl));
@@ -775,6 +780,33 @@ fn line(surface: &mut krilla::surface::Surface<'_>, x0: f32, y0: f32, x1: f32, y
 /// Fill a circle of radius `r` centred at `(cx, cy)`, approximated by
 /// four cubic-Bézier quadrants (control-point factor κ ≈ 0.5523). Used
 /// for ordered-list marker badges.
+/// Draw a vector checkmark for a `{% list type="checkmark" %}` marker, sized
+/// and positioned from the (unrendered) text marker's box at `(x, y_top)`.
+fn draw_checkmark(
+    surface: &mut krilla::surface::Surface<'_>,
+    marker: &Layout<rgb::Color>,
+    x: f32,
+    y_top: f32,
+    color: rgb::Color,
+) {
+    let h = marker.height().max(1.0);
+    let baseline = y_top + h * 0.78;
+    let s = h * 0.5;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x, baseline - s * 0.45);
+    pb.line_to(x + s * 0.38, baseline);
+    pb.line_to(x + s * 0.95, baseline - s);
+    let path = pb.finish().unwrap();
+    surface.set_stroke(Some(Stroke {
+        paint: color.into(),
+        width: (s * 0.16).max(0.8),
+        opacity: NormalizedF32::ONE,
+        ..Default::default()
+    }));
+    surface.draw_path(&path);
+    surface.set_stroke(None);
+}
+
 fn fill_circle(
     surface: &mut krilla::surface::Surface<'_>,
     cx: f32,

@@ -207,6 +207,18 @@ pub fn build_coverpage_blocks(
         ));
     }
 
+    // Optional hero image (e.g. a product photo) below the metadata. Drawn
+    // from its own slot so a cover can carry both a brand logo (above the
+    // title) and a hero image.
+    if let Some(hero) = &coverpage.hero
+        && let Some(block) = build_logo_block(hero, body_left, column_w, coverpage.align, assets)
+    {
+        if coverpage.hero_gap > 0.0 {
+            out.push(spacer_block(body_left, coverpage.hero_gap));
+        }
+        out.push(block);
+    }
+
     // Page break — flushes the cover page.
     out.push(Block {
         height: 0.0,

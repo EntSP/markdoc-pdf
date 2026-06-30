@@ -715,6 +715,12 @@ pub struct CoverPageStyle {
     pub logo: Option<LogoSpec>,
     /// Where the logo sits relative to the title. See [`LogoPosition`].
     pub logo_position: LogoPosition,
+    /// Optional hero image (e.g. a product photo) drawn below the cover
+    /// metadata — a second image slot so a cover can show both a brand
+    /// logo (above the title) and a hero image.
+    pub hero: Option<LogoSpec>,
+    /// Gap above the hero image.
+    pub hero_gap: f32,
     /// Vertical space above the first element on the page (the logo
     /// when `logo_position = "above"`, otherwise the title).
     /// Defaults to ~1/4 of A4 height.
@@ -777,6 +783,8 @@ impl Default for CoverPageStyle {
             enabled: false,
             logo: None,
             logo_position: LogoPosition::Above,
+            hero: None,
+            hero_gap: 40.0,
             top_margin: 200.0,
             logo_to_title_gap: 32.0,
             title_font_size: 32.0,

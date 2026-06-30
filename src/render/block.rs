@@ -1028,6 +1028,9 @@ fn layout_node(
         // a fresh page after the ToC.
         "toc" => vec![toc_marker_block(x), page_break_block()],
 
+        // `{% pagebreak /%}` forces the following content onto a new page.
+        "pagebreak" => vec![page_break_block()],
+
         "hr" => vec![layout_rule(x, width, ctx.style)],
 
         // Inline-only tags should never appear at block level (`a`, `strong`
@@ -1945,7 +1948,13 @@ fn layout_li_body(item: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Ve
         // Synthesize a paragraph wrapper to reuse layout_paragraph.
         return layout_paragraph(item, x, width, ctx);
     }
-    layout_children(&item.children, x, width, ctx)
+    // Mixed item: leading text (e.g. "A screwdriver, with the bits:")
+    // followed by a block child (a nested list). markdoc leaves that
+    // leading text as bare inline nodes, which `layout_children` would
+    // drop — wrap each inline run in a synthetic paragraph first so the
+    // item's own text renders above its nested list.
+    let wrapped = wrap_inline_runs_in_paragraphs(&item.children);
+    layout_children(&wrapped, x, width, ctx)
 }
 
 // ── Block quote ─────────────────────────────────────────────────────────

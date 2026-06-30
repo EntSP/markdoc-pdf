@@ -48,6 +48,8 @@ small and readable.
 | `link-style.style.toml` | `[link]` block exercising all four knobs (`color`, `italic`, `bold`, `underline`). Renders links in bold italic purple with an underline. |
 | `callout-styles.style.toml` | Every callout-related knob spelled out: `callout_padding`, `callout_accent_width`, `callout_space_after`, plus per-severity `[callout_styles.<kind>]` blocks for all seven kinds. Values match the built-in defaults — copy and edit. |
 | `coverpage.style.toml` (+ `coverpage.mdoc`) | Synthesised cover page: large title at the top, hero image below (`logo_position = "below_title"`), then subtitle / authors / publication date. Renders against `coverpage.mdoc`, which carries the rich frontmatter the cover page needs. |
+| `badges.style.toml` (+ `badges.mdoc`) | Ordered-list circle badges via `[list_marker]`: numbers in filled circles, with `ordered_sequences` cycling `decimal` → `lower-alpha` as the list nests (1 → a). |
+| `table-borders-{grid,horizontal,none}.style.toml` (+ `table-borders.mdoc`) | The three `table_borders` modes — a full grid, horizontal row rules only, or none. Render `table-borders.mdoc` with each to compare. |
 | `pdfa.style.toml` | One-liner: `pdf_export = "a2_b"`. Switches to PDF/A-2B output. |
 | `ua1.style.toml` | One-liner: `pdf_export = "u_a1"`. Switches to PDF/UA-1 (accessibility) output. |
 

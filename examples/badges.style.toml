@@ -1,0 +1,6 @@
+[list_marker]
+badge = true
+ordered_sequences = ["decimal", "lower-alpha"]
+badge_fill = [223, 227, 232]
+badge_text_color = [90, 100, 110]
+badge_scale = 1.7

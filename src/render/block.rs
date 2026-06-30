@@ -2477,17 +2477,21 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     let total_borders = border_thickness * (num_cols as f32 + 1.0);
     let inner_width = width - total_borders;
 
-    // Decide column widths.
-    let column_widths = match ctx.style.table_column_sizing {
-        TableColumnSizing::Equal => vec![inner_width / num_cols as f32; num_cols],
-        TableColumnSizing::Auto => compute_auto_column_widths(
-            &header_rows,
-            &body_rows,
-            num_cols,
-            inner_width,
-            padding,
-            ctx,
-        ),
+    // Decide column widths. Explicit weights win when they match this
+    // table's column count; otherwise fall back to the automatic modes.
+    let column_widths = match weighted_column_widths(&ctx.style.table_column_weights, inner_width) {
+        Some(ws) if ws.len() == num_cols => ws,
+        _ => match ctx.style.table_column_sizing {
+            TableColumnSizing::Equal => vec![inner_width / num_cols as f32; num_cols],
+            TableColumnSizing::Auto => compute_auto_column_widths(
+                &header_rows,
+                &body_rows,
+                num_cols,
+                inner_width,
+                padding,
+                ctx,
+            ),
+        },
     };
 
     // Compute per-column x origins (left edge of each column's content area).
@@ -2645,6 +2649,18 @@ fn layout_row_source(
         height: max_height + 2.0 * padding,
         cells,
     }
+}
+
+/// Split `inner_width` across columns in the given relative `weights`
+/// (e.g. `[1.0, 3.0]` → 25% / 75% of the width). Returns `None` when the
+/// weights are unusable (empty, or any non-positive), so the caller falls
+/// back to an automatic sizing mode.
+fn weighted_column_widths(weights: &[f32], inner_width: f32) -> Option<Vec<f32>> {
+    if weights.is_empty() || weights.iter().any(|w| *w <= 0.0) {
+        return None;
+    }
+    let sum: f32 = weights.iter().sum();
+    Some(weights.iter().map(|w| inner_width * w / sum).collect())
 }
 
 /// Two-pass auto-sizing: measure each cell's natural & min widths,
@@ -3192,5 +3208,19 @@ mod tests {
         ));
         // Absent attribute → not explicitly false.
         assert!(!attr_is_false(&tag_with_attrs(&[]), "numbered"));
+    }
+
+    #[test]
+    fn weighted_column_widths_split_in_proportion() {
+        // [1, 3] over 400pt → 100 / 300.
+        let ws = weighted_column_widths(&[1.0, 3.0], 400.0).expect("usable weights");
+        assert_eq!(ws, vec![100.0, 300.0]);
+        // Weights are relative, not absolute — [2, 6] gives the same split.
+        let ws2 = weighted_column_widths(&[2.0, 6.0], 400.0).expect("usable weights");
+        assert_eq!(ws2, vec![100.0, 300.0]);
+        // Unusable inputs return None so the caller falls back to auto sizing.
+        assert!(weighted_column_widths(&[], 400.0).is_none());
+        assert!(weighted_column_widths(&[1.0, 0.0], 400.0).is_none());
+        assert!(weighted_column_widths(&[1.0, -2.0], 400.0).is_none());
     }
 }

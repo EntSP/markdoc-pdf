@@ -466,6 +466,14 @@ pub struct Style {
 
     // ── Tables ────────────────────────────────────────────────────────
     pub table_column_sizing: TableColumnSizing,
+    /// Explicit relative column widths. When set and the count matches a
+    /// table's column count, the table's inner width is split in these
+    /// proportions (weights, not absolute units — `[1.0, 3.0]` makes the
+    /// second column three times the first) and `table_column_sizing` is
+    /// ignored for that table. Ideal for key/value metadata tables where a
+    /// fixed-width label column reads better than content-based sizing.
+    /// Empty (the default) leaves every table on automatic sizing.
+    pub table_column_weights: Vec<f32>,
     /// Which rules the table draws: a full `grid` (default), only
     /// `horizontal` row separators, or `none`.
     pub table_borders: TableBorders,
@@ -567,6 +575,7 @@ impl Default for Style {
             table_caption_prefix: "Table".to_string(),
             caption_separator: ":".to_string(),
             table_column_sizing: TableColumnSizing::Auto,
+            table_column_weights: Vec::new(),
             table_borders: TableBorders::Grid,
             table_cell_padding: 6.0,
             table_border_color: ColorRgb::new(210, 215, 225),

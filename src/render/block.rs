@@ -443,11 +443,15 @@ fn try_split_first_body_row(
     Some((
         TableRow {
             is_header: false,
+            fill: row.fill,
+            header_column: row.header_column,
             height: head_height,
             cells: head_cells,
         },
         TableRow {
             is_header: false,
+            fill: row.fill,
+            header_column: row.header_column,
             height: tail_height,
             cells: tail_cells,
         },
@@ -633,6 +637,13 @@ pub enum BlockDraw {
 #[derive(Clone)]
 pub struct TableRow {
     pub is_header: bool,
+    /// Optional background fill for zebra striping; `None` = no fill.
+    /// Header rows leave this `None` (they paint the table header colour).
+    pub fill: Option<rgb::Color>,
+    /// Whether this table has a header column (column 0 = row headers).
+    /// Constant across a table's rows; carried per-row so it survives
+    /// pagination splits.
+    pub header_column: bool,
     pub height: f32,
     /// One cell per column. Cell content blocks have their `x` already
     /// shifted into the column at layout time.
@@ -2417,7 +2428,113 @@ fn spacer_block(height: f32) -> Block {
 /// Lay out a `<table>` into a single `Table` block. Equal column widths;
 /// header rows get bold text + tinted background; cells can hold any
 /// block content (paragraphs, lists, …).
+/// Per-table style overrides parsed from a `{% table … %}` tag's
+/// attributes. Every field is optional — `None` means "inherit the
+/// document-wide table style", so a plain pipe table (no attributes)
+/// yields an all-`None` override and renders with the global style.
+#[derive(Default)]
+struct TableOverride {
+    borders: Option<super::style::TableBorders>,
+    border_color: Option<rgb::Color>,
+    edge_color: Option<rgb::Color>,
+    header_bg: Option<rgb::Color>,
+    cell_padding: Option<f32>,
+    column_weights: Option<Vec<f32>>,
+    /// `Some(Some(c))` = stripe with colour `c`; `Some(None)` = explicitly
+    /// off (`stripe="none"`); `None` = inherit the document default.
+    stripe: Option<Option<rgb::Color>>,
+    header_column: Option<bool>,
+}
+
+impl TableOverride {
+    fn from_attrs(attrs: &std::collections::HashMap<String, Scalar>) -> Self {
+        use super::inline::parse_css_color;
+        use super::style::TableBorders;
+        let color = |key: &str| match attrs.get(key) {
+            Some(Scalar::String(s)) => parse_css_color(s),
+            _ => None,
+        };
+        let borders = match attrs.get("borders") {
+            Some(Scalar::String(s)) => match s.as_str() {
+                "grid" => Some(TableBorders::Grid),
+                "horizontal" => Some(TableBorders::Horizontal),
+                "none" => Some(TableBorders::None),
+                _ => None,
+            },
+            _ => None,
+        };
+        let cell_padding = match attrs.get("cell_padding") {
+            Some(Scalar::Number(n)) => Some(*n as f32),
+            Some(Scalar::String(s)) => s.trim().parse().ok(),
+            _ => None,
+        };
+        // Weights are a space/comma-separated string because the tag parser
+        // doesn't accept literal arrays (e.g. `column_weights="1 3.5"`).
+        let column_weights = match attrs.get("column_weights") {
+            Some(Scalar::String(s)) => {
+                let ws: Vec<f32> = s
+                    .split([',', ' '])
+                    .filter(|t| !t.is_empty())
+                    .filter_map(|t| t.parse().ok())
+                    .collect();
+                (!ws.is_empty()).then_some(ws)
+            }
+            _ => None,
+        };
+        let stripe = match attrs.get("stripe") {
+            Some(Scalar::String(s)) if s.eq_ignore_ascii_case("none") => Some(None),
+            Some(Scalar::String(s)) => parse_css_color(s).map(Some),
+            _ => None,
+        };
+        let header_column = match attrs.get("header_column") {
+            Some(Scalar::Boolean(b)) => Some(*b),
+            Some(Scalar::String(s)) => Some(s.eq_ignore_ascii_case("true")),
+            _ => None,
+        };
+        TableOverride {
+            borders,
+            border_color: color("border_color"),
+            edge_color: color("edge_color"),
+            header_bg: color("header_background"),
+            cell_padding,
+            column_weights,
+            stripe,
+            header_column,
+        }
+    }
+}
+
+/// Find the node that actually holds the table rows. A pipe table is a
+/// `Tag("table")` whose children are `<thead>`/`<tbody>`/`<tr>`. When the
+/// author wraps a pipe table in `{% table … %}` to style it, the real
+/// `<table>` sits one level down as a child, so descend into it.
+fn table_rows_source(tag: &Tag) -> &Tag {
+    let has_rows = tag.children.iter().any(|c| {
+        matches!(c, RenderableTreeNode::Tag(t)
+            if matches!(t.name.as_str(), "thead" | "tbody" | "tr"))
+    });
+    if has_rows {
+        return tag;
+    }
+    for c in &tag.children {
+        if let RenderableTreeNode::Tag(t) = c
+            && t.name == "table"
+        {
+            return t;
+        }
+    }
+    tag
+}
+
 fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    // Per-table style overrides from the `{% table … %}` attributes; a
+    // plain pipe table has none, so everything inherits the document style.
+    let ov = TableOverride::from_attrs(&tag.attributes);
+    // For a plain pipe table the rows are this node's own children; when a
+    // pipe table is wrapped in `{% table … %}` for styling, the real
+    // <table> is a child — descend to wherever the rows actually live.
+    let rows_tag = table_rows_source(tag);
+
     // Collect rows from <thead> and <tbody>. pulldown-cmark's pipe-table
     // form puts cells directly under <thead> (no wrapping <tr>) for the
     // header, and emits <tr>s as direct children of <table> for body
@@ -2426,7 +2543,7 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     //   <table><thead><td/><td/></thead><tr/><tr/></table>
     let mut header_rows: Vec<RowSource<'_>> = Vec::new();
     let mut body_rows: Vec<RowSource<'_>> = Vec::new();
-    for child in &tag.children {
+    for child in &rows_tag.children {
         let RenderableTreeNode::Tag(t) = child else {
             continue;
         };
@@ -2460,6 +2577,12 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     if !header_rows.is_empty() && rows_are_blank(&header_rows) {
         header_rows.clear();
     }
+    // Drop wholly-blank body rows. A pipe table wrapped in `{% table %}`
+    // can pick up a spurious empty trailing row from the closing tag; a row
+    // with no content in any cell is never meaningful. (A row with some
+    // empty cells but text elsewhere — e.g. a metadata row with a blank
+    // value — is kept.)
+    body_rows.retain(|r| !r.cells().all(|c| node_text_is_blank(&c.children)));
 
     // Column count = max cells across all rows.
     let num_cols = header_rows
@@ -2472,14 +2595,18 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         return Vec::new();
     }
 
-    let padding = ctx.style.table_cell_padding;
+    let padding = ov.cell_padding.unwrap_or(ctx.style.table_cell_padding);
     let border_thickness = ctx.style.table_border_thickness;
     let total_borders = border_thickness * (num_cols as f32 + 1.0);
     let inner_width = width - total_borders;
 
     // Decide column widths. Explicit weights win when they match this
     // table's column count; otherwise fall back to the automatic modes.
-    let column_widths = match weighted_column_widths(&ctx.style.table_column_weights, inner_width) {
+    let weights = ov
+        .column_weights
+        .as_deref()
+        .unwrap_or(ctx.style.table_column_weights.as_slice());
+    let column_widths = match weighted_column_widths(weights, inner_width) {
         Some(ws) if ws.len() == num_cols => ws,
         _ => match ctx.style.table_column_sizing {
             TableColumnSizing::Equal => vec![inner_width / num_cols as f32; num_cols],
@@ -2502,6 +2629,23 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         cursor += w + border_thickness;
     }
 
+    // Render the first column as row headers (bold + header fill)?
+    let header_column = ov.header_column.unwrap_or(ctx.style.table_header_column);
+
+    // Per-column text alignment from CommonMark's `:--`/`--:` delimiter row,
+    // which markdoc stores on the table node's `align` attribute.
+    let column_aligns: Vec<parley::layout::Alignment> = match rows_tag.attributes.get("align") {
+        Some(Scalar::Array(arr)) => arr
+            .iter()
+            .map(|s| match s {
+                Scalar::String(a) if a == "center" => parley::layout::Alignment::Center,
+                Scalar::String(a) if a == "right" => parley::layout::Alignment::End,
+                _ => parley::layout::Alignment::Start,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+
     let mut rows_out: Vec<TableRow> = Vec::new();
     for r in header_rows.iter() {
         rows_out.push(layout_row_source(
@@ -2510,6 +2654,8 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             &column_xs,
             &column_widths,
             padding,
+            header_column,
+            &column_aligns,
             ctx,
         ));
     }
@@ -2520,14 +2666,53 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             &column_xs,
             &column_widths,
             padding,
+            header_column,
+            &column_aligns,
             ctx,
         ));
+    }
+
+    // Zebra striping: paint every other body row with the effective stripe
+    // colour — a per-table `stripe="…"` override, else the document
+    // default. `stripe="none"` switches it off for this one table.
+    let stripe = match ov.stripe {
+        Some(s) => s,
+        None => ctx.style.table_stripe_color.map(Into::into),
+    };
+    if let Some(stripe) = stripe {
+        for (body_idx, row) in rows_out.iter_mut().filter(|r| !r.is_header).enumerate() {
+            if body_idx % 2 == 1 {
+                row.fill = Some(stripe);
+            }
+        }
     }
 
     let table_height: f32 = rows_out.iter().map(|r| r.height).sum::<f32>()
         + border_thickness * (rows_out.len() as f32 + 1.0);
 
     let table_id = ctx.next_table_id();
+
+    // Effective table-level visuals: per-table overrides fall back to the
+    // document style.
+    let header_bg = ov
+        .header_bg
+        .unwrap_or_else(|| ctx.style.table_header_background.into());
+    let border_color = ov
+        .border_color
+        .unwrap_or_else(|| ctx.style.table_border_color.into());
+    let border_style = ov.borders.unwrap_or(ctx.style.table_borders);
+    let edge = match ov.edge_color {
+        Some(c) => Some((
+            c,
+            ctx.style.table_edge_thickness.unwrap_or(border_thickness),
+        )),
+        None => ctx.style.table_edge_color.map(|c| {
+            (
+                c.into(),
+                ctx.style.table_edge_thickness.unwrap_or(border_thickness),
+            )
+        }),
+    };
 
     vec![Block {
         height: table_height,
@@ -2537,16 +2722,11 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             column_widths,
             rows: rows_out,
             cell_padding: padding,
-            header_bg: ctx.style.table_header_background.into(),
-            border_color: ctx.style.table_border_color.into(),
+            header_bg,
+            border_color,
             border_thickness,
-            border_style: ctx.style.table_borders,
-            edge: ctx.style.table_edge_color.map(|c| {
-                (
-                    c.into(),
-                    ctx.style.table_edge_thickness.unwrap_or(border_thickness),
-                )
-            }),
+            border_style,
+            edge,
             caption: ctx.pending_table_caption.take(),
         },
         outline: None,
@@ -2618,12 +2798,15 @@ fn node_text_is_blank(nodes: &[RenderableTreeNode]) -> bool {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn layout_row_source(
     src: &RowSource<'_>,
     is_header: bool,
     column_xs: &[f32],
     column_widths: &[f32],
     padding: f32,
+    header_column: bool,
+    column_aligns: &[parley::layout::Alignment],
     ctx: &mut LayoutCtx<'_>,
 ) -> TableRow {
     let mut cells: Vec<Vec<Block>> = Vec::with_capacity(column_xs.len());
@@ -2633,7 +2816,20 @@ fn layout_row_source(
         }
         let cell_x = column_xs[col] + padding;
         let cell_text_width = (column_widths[col] - 2.0 * padding).max(0.0);
-        let blocks = layout_cell_content(cell_tag, cell_x, cell_text_width, is_header, ctx);
+        // A header column makes column 0 a header cell even in body rows.
+        let cell_is_header = is_header || (header_column && col == 0);
+        let align = column_aligns
+            .get(col)
+            .copied()
+            .unwrap_or(parley::layout::Alignment::Start);
+        let blocks = layout_cell_content(
+            cell_tag,
+            cell_x,
+            cell_text_width,
+            cell_is_header,
+            align,
+            ctx,
+        );
         cells.push(blocks);
     }
     while cells.len() < column_xs.len() {
@@ -2646,6 +2842,10 @@ fn layout_row_source(
     let max_height = cell_heights.iter().cloned().fold(0.0_f32, f32::max);
     TableRow {
         is_header,
+        // Striping is decided by row position in `layout_table`; rows start
+        // unfilled and the caller paints alternating body rows.
+        fill: None,
+        header_column,
         height: max_height + 2.0 * padding,
         cells,
     }
@@ -2794,6 +2994,7 @@ fn layout_cell_content(
     x: f32,
     width: f32,
     is_header: bool,
+    align: parley::layout::Alignment,
     ctx: &mut LayoutCtx<'_>,
 ) -> Vec<Block> {
     // If there are no block-level children, render directly as a paragraph
@@ -2820,7 +3021,7 @@ fn layout_cell_content(
         }
     });
     if !any_block_child {
-        return layout_table_cell_paragraph(cell, x, width, is_header, ctx);
+        return layout_table_cell_paragraph(cell, x, width, is_header, align, ctx);
     }
     layout_children(&cell.children, x, width, ctx)
 }
@@ -3011,6 +3212,7 @@ fn layout_table_cell_paragraph(
     x: f32,
     width: f32,
     is_header: bool,
+    align: parley::layout::Alignment,
     ctx: &mut LayoutCtx<'_>,
 ) -> Vec<Block> {
     // Table cells don't carry document footnotes for v1 — the
@@ -3033,11 +3235,12 @@ fn layout_table_cell_paragraph(
         font_families: ctx.body_families,
         italic: false,
     };
-    let layout = build_layout(
+    let layout = build_layout_aligned(
         &inlines.text,
         &inlines.style_ranges,
         &style,
         width,
+        align,
         ctx.font_cx,
         ctx.layout_cx,
     );
@@ -3222,5 +3425,40 @@ mod tests {
         assert!(weighted_column_widths(&[], 400.0).is_none());
         assert!(weighted_column_widths(&[1.0, 0.0], 400.0).is_none());
         assert!(weighted_column_widths(&[1.0, -2.0], 400.0).is_none());
+    }
+
+    #[test]
+    fn table_override_parses_tag_attributes() {
+        use crate::render::style::TableBorders;
+        use std::collections::HashMap;
+        let mut a = HashMap::new();
+        a.insert("borders".to_string(), Scalar::String("horizontal".into()));
+        a.insert(
+            "header_background".to_string(),
+            Scalar::String("#e8e8e8".into()),
+        );
+        a.insert("cell_padding".to_string(), Scalar::Number(6.0));
+        a.insert("column_weights".to_string(), Scalar::String("1 3.5".into()));
+        a.insert("stripe".to_string(), Scalar::String("#f5f5f5".into()));
+        a.insert("header_column".to_string(), Scalar::Boolean(true));
+        let ov = TableOverride::from_attrs(&a);
+        assert_eq!(ov.borders, Some(TableBorders::Horizontal));
+        assert!(ov.header_bg.is_some());
+        assert_eq!(ov.cell_padding, Some(6.0));
+        assert_eq!(ov.column_weights, Some(vec![1.0, 3.5]));
+        assert!(matches!(ov.stripe, Some(Some(_))));
+        assert_eq!(ov.header_column, Some(true));
+
+        // `stripe="none"` is explicit-off (distinct from "inherit").
+        let mut b = HashMap::new();
+        b.insert("stripe".to_string(), Scalar::String("none".into()));
+        assert!(matches!(TableOverride::from_attrs(&b).stripe, Some(None)));
+
+        // No attributes → inherit everything (all None).
+        let none = TableOverride::from_attrs(&HashMap::new());
+        assert!(none.borders.is_none());
+        assert!(none.stripe.is_none());
+        assert!(none.column_weights.is_none());
+        assert!(none.header_bg.is_none());
     }
 }

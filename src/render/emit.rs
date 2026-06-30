@@ -597,14 +597,41 @@ fn emit_block(
             let total_height: f32 = rows.iter().map(|r| r.height).sum::<f32>()
                 + border_thickness * (rows.len() as f32 + 1.0);
 
-            // 1. Header backgrounds (rectangles behind header rows).
+            // 1. Row backgrounds: header rows paint the header colour;
+            //    body rows paint their own optional stripe fill (zebra).
             let mut row_top = y + *border_thickness;
             for row in rows {
-                if row.is_header {
+                let paint = if row.is_header {
+                    Some(*header_bg)
+                } else {
+                    row.fill
+                };
+                if let Some(color) = paint {
                     let mut pb = PathBuilder::new();
                     pb.move_to(*x, row_top);
                     pb.line_to(*x + total_width, row_top);
                     pb.line_to(*x + total_width, row_top + row.height);
+                    pb.line_to(*x, row_top + row.height);
+                    pb.close();
+                    let path = pb.finish().unwrap();
+                    surface.set_fill(Some(Fill {
+                        paint: color.into(),
+                        opacity: NormalizedF32::ONE,
+                        rule: Default::default(),
+                    }));
+                    surface.draw_path(&path);
+                }
+                // Header column: paint column 0 of body rows with the header
+                // colour, on top of any stripe.
+                if row.header_column
+                    && !row.is_header
+                    && let Some(w0) = column_widths.first()
+                {
+                    let col0_right = *x + *border_thickness * 1.5 + *w0;
+                    let mut pb = PathBuilder::new();
+                    pb.move_to(*x, row_top);
+                    pb.line_to(col0_right, row_top);
+                    pb.line_to(col0_right, row_top + row.height);
                     pb.line_to(*x, row_top + row.height);
                     pb.close();
                     let path = pb.finish().unwrap();
@@ -625,11 +652,13 @@ fn emit_block(
             let mut row_top = y + *border_thickness;
             for row in rows {
                 tags.enter(TagGroup::new(TagKind::TR(Tag::<kind::TR>::TR)));
-                for cell in &row.cells {
+                for (col_idx, cell) in row.cells.iter().enumerate() {
                     let cell_kind = if row.is_header {
                         TagKind::TH(Tag::<kind::TH>::TH(
                             krilla::tagging::TableHeaderScope::Column,
                         ))
+                    } else if row.header_column && col_idx == 0 {
+                        TagKind::TH(Tag::<kind::TH>::TH(krilla::tagging::TableHeaderScope::Row))
                     } else {
                         TagKind::TD(Tag::<kind::TD>::TD)
                     };

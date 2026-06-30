@@ -399,8 +399,9 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
 
 /// Parse a CSS-ish colour for the `{% color %}` inline tag: a `#rgb` or
 /// `#rrggbb` hex string, or one of a small set of named colours. Returns
-/// `None` for anything unrecognised.
-fn parse_css_color(s: &str) -> Option<krilla::color::rgb::Color> {
+/// `None` for anything unrecognised. Also reused by the `{% table %}`
+/// per-table colour attributes.
+pub(super) fn parse_css_color(s: &str) -> Option<krilla::color::rgb::Color> {
     let s = s.trim();
     if let Some(hex) = s.strip_prefix('#') {
         let (r, g, b) = match hex.len() {

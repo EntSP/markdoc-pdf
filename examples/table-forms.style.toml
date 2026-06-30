@@ -1,0 +1,20 @@
+# Demonstrates the table forms this renderer supports: plain pipe tables,
+# header-less tables, a header column, and per-column alignment.
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 60.0
+margin_y    = 60.0
+body_font_size   = 11.0
+body_line_height = 1.4
+
+table_borders          = "grid"
+table_border_color     = { r = 205, g = 210, b = 218 }
+table_header_background = { r = 235, g = 238, b = 243 }
+table_header_text_color = { r = 20, g = 30, b = 50 }
+table_cell_padding     = 5.0
+
+[heading.h1]
+color = { r = 0, g = 48, b = 135 }
+[heading.h2]
+color = { r = 0, g = 90, b = 140 }
+font_size = 14.0

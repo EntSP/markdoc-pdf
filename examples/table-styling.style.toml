@@ -1,0 +1,25 @@
+# Per-table styling demo. Sets a document-wide table style (full grid,
+# shaded header, light zebra stripe); `table-styling.mdoc` then overrides
+# it per table with `{% table %}` attributes.
+page_width  = 595.0
+page_height = 842.0
+margin_x    = 60.0
+margin_y    = 60.0
+body_font_size   = 10.5
+body_line_height = 1.4
+
+# ── Document-wide table style ──────────────────────────────────────────
+table_borders           = "grid"
+table_border_color      = { r = 200, g = 206, b = 214 }
+table_header_background  = { r = 232, g = 236, b = 242 }
+table_header_text_color  = { r = 20, g = 30, b = 50 }
+table_stripe_color       = { r = 244, g = 247, b = 250 }  # default zebra
+table_cell_padding       = 5.0
+
+[heading.h1]
+color = { r = 0, g = 48, b = 135 }
+[heading.h2]
+color = { r = 0, g = 90, b = 140 }
+[heading.h3]
+color = { r = 0, g = 90, b = 140 }
+font_size = 12.0

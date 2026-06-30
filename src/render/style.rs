@@ -488,6 +488,18 @@ pub struct Style {
     pub table_edge_thickness: Option<f32>,
     pub table_header_background: ColorRgb,
     pub table_header_text_color: ColorRgb,
+    /// Background fill for alternating body rows (zebra striping); applied
+    /// to every other body row. `None` (the default) disables it. A table
+    /// can override it with the `{% table stripe="#rrggbb" %}` attribute,
+    /// or `stripe="none"` to switch striping off for that one table.
+    pub table_stripe_color: Option<ColorRgb>,
+    /// Treat the first column as a header column (row headers): its cells
+    /// render in the header text style (bold, `table_header_text_color`)
+    /// over a `table_header_background` fill, and are tagged as row headers
+    /// for accessibility. Off by default; set per table with
+    /// `{% table header_column=true %}`. Independent of the header row, so
+    /// a table can have both.
+    pub table_header_column: bool,
     pub table_space_after: f32,
 
     // ── Footnotes ─────────────────────────────────────────────────────
@@ -584,6 +596,8 @@ impl Default for Style {
             table_edge_thickness: None,
             table_header_background: ColorRgb::new(240, 242, 246),
             table_header_text_color: ColorRgb::new(20, 30, 50),
+            table_stripe_color: None,
+            table_header_column: false,
             table_space_after: 12.0,
             footnote: FootnoteStyle::default(),
             watermark: None,

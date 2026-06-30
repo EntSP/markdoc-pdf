@@ -1,0 +1,51 @@
+---
+title: Table forms
+---
+
+# Ways to make a table
+
+This renderer builds tables from Markdown **pipe tables** (optionally wrapped
+in a `table` tag for styling). The Markdoc list-syntax table (cells as `*`
+items separated by `---`) is **not** supported — use the pipe forms below.
+
+## Basic table
+
+A plain pipe table. The first row is the header.
+
+| Heading 1    | Heading 2    |
+|--------------|--------------|
+| Row 1 Cell 1 | Row 1 Cell 2 |
+| Row 2 Cell 1 | Row 2 Cell 2 |
+
+## Table without a header
+
+Leave the header row blank (`| | |`) and it is dropped, leaving a plain grid.
+
+| | |
+|------|------|
+| foo  | bar  |
+| foo  | bar  |
+
+## Header column (row headers)
+
+Wrap the table in a `table` tag with `header_column=true` to turn the first
+column into row headers (bold + shaded).
+
+{% table header_column=true %}
+| | |
+|---------|------------|
+| Date    | 2026-05-20 |
+| Version | 3.9.0      |
+| Author  | MiR        |
+{% /table %}
+
+## Text alignment
+
+Use CommonMark column markers in the delimiter row — `:---` left,
+`:--:` centre, `---:` right.
+
+| Left        | Centre | Right |
+|:------------|:------:|------:|
+| foo         | bar    | baz   |
+| another row | mid    | 1,234 |
+| x           | y      | 42    |

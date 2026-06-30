@@ -368,6 +368,13 @@ pub struct Style {
     pub page_height: f32,
     pub margin_x: f32,
     pub margin_y: f32,
+    /// When the rendered document ends on an odd page, append one page so
+    /// the physical total is even. Intended for duplex (double-sided)
+    /// printing, where each new document should begin on the front of a
+    /// fresh sheet. The padding page carries the running header / footer
+    /// (and watermark) like any other page but has no body content, and it
+    /// is counted in the `{total}` page-of total. Off by default.
+    pub pad_to_even: bool,
 
     // ── Body text ─────────────────────────────────────────────────────
     pub body_font_size: f32,
@@ -516,6 +523,7 @@ impl Default for Style {
             page_height: 842.0, // A4 — real page size now that we paginate
             margin_x: 72.0,
             margin_y: 72.0,
+            pad_to_even: false,
             text_align: TextAlign::default(),
             body_font_size: 11.0,
             body_line_height: 1.5,

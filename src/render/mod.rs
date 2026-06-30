@@ -345,7 +345,7 @@ pub fn render_pdf_with(
         .map(|marker_page| marker_page + 1)
         .unwrap_or(cover_page_count);
     let any_section = style.toc.enabled || style.lof.enabled || style.lot.enabled;
-    let pages: Vec<(Vec<block::Block>, Vec<block::Block>)> = if any_section {
+    let mut pages: Vec<(Vec<block::Block>, Vec<block::Block>)> = if any_section {
         build_with_front_matter_pools(
             body_with_pools,
             style,
@@ -358,6 +358,14 @@ pub fn render_pdf_with(
     } else {
         body_with_pools
     };
+    // Duplex padding: if the document ends on an odd page, append one
+    // page so the physical sheet count is even. The padding page carries
+    // the running header / footer (and watermark) like any other page, but
+    // has no body content. `total_pages` is taken AFTER padding so the
+    // `{total}` page-of count includes it.
+    if needs_even_padding(pages.len(), style.pad_to_even) {
+        pages.push((Vec::new(), Vec::new()));
+    }
     let total_pages = pages.len();
 
     // 3. Emit. Each page collects link annotations and outline points
@@ -454,7 +462,9 @@ pub fn render_pdf_with(
                 }
             }
 
-            // Page-level decoration: skip on first page if configured.
+            // Page-level decoration: skip on first page if configured. The
+            // duplex-padding page is decorated like any other (header /
+            // footer); it just has no body.
             let draw_decoration = !(style.page_decoration.skip_first_page && page_idx == 0);
             if draw_decoration {
                 let tctx = TemplateContext {
@@ -1209,4 +1219,32 @@ fn apply_metadata(document: &mut Document, ctx: &RenderContext) {
         meta = meta.producer(producer);
     }
     document.set_metadata(meta);
+}
+
+/// Whether a trailing page must be appended so the physical page count is
+/// even. Duplex (double-sided) printing wants each document to begin on the
+/// front of a fresh sheet, which requires an even total. `content_pages` is
+/// the count before padding; an empty document (0 pages) is already even and
+/// is left untouched.
+fn needs_even_padding(content_pages: usize, pad_to_even: bool) -> bool {
+    pad_to_even && content_pages % 2 == 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::needs_even_padding;
+
+    #[test]
+    fn even_padding_only_pads_odd_counts_when_enabled() {
+        // Enabled: an odd page count gains a trailing page; even is untouched.
+        assert!(needs_even_padding(1, true));
+        assert!(needs_even_padding(3, true));
+        assert!(!needs_even_padding(2, true));
+        assert!(!needs_even_padding(6, true));
+        // An empty document (0 pages) is already even.
+        assert!(!needs_even_padding(0, true));
+        // Disabled: never pads, regardless of parity.
+        assert!(!needs_even_padding(1, false));
+        assert!(!needs_even_padding(2, false));
+    }
 }

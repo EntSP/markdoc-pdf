@@ -408,18 +408,29 @@ fn try_split_first_body_row(
         return None;
     }
 
-    let mut head_cells: Vec<Vec<Block>> = Vec::with_capacity(row.cells.len());
-    let mut tail_cells: Vec<Vec<Block>> = Vec::with_capacity(row.cells.len());
+    let mut head_cells: Vec<TableCell> = Vec::with_capacity(row.cells.len());
+    let mut tail_cells: Vec<TableCell> = Vec::with_capacity(row.cells.len());
     let mut any_split = false;
     let mut head_has_content = false;
 
     for cell in &row.cells {
-        if cell.is_empty() {
-            head_cells.push(Vec::new());
-            tail_cells.push(Vec::new());
+        let (col, span, rowspan) = (cell.col, cell.colspan, cell.rowspan);
+        if cell.blocks.is_empty() {
+            head_cells.push(TableCell {
+                blocks: Vec::new(),
+                col,
+                colspan: span,
+                rowspan,
+            });
+            tail_cells.push(TableCell {
+                blocks: Vec::new(),
+                col,
+                colspan: span,
+                rowspan,
+            });
             continue;
         }
-        let pages = paginate_blocks(cell.clone(), inner);
+        let pages = paginate_blocks(cell.blocks.clone(), inner);
         let mut iter = pages.into_iter();
         let head = iter.next().unwrap_or_default();
         let rest: Vec<Block> = iter.flatten().collect();
@@ -429,8 +440,18 @@ fn try_split_first_body_row(
         if !rest.is_empty() {
             any_split = true;
         }
-        head_cells.push(head);
-        tail_cells.push(rest);
+        head_cells.push(TableCell {
+            blocks: head,
+            col,
+            colspan: span,
+            rowspan,
+        });
+        tail_cells.push(TableCell {
+            blocks: rest,
+            col,
+            colspan: span,
+            rowspan,
+        });
     }
 
     if !any_split || !head_has_content {
@@ -458,10 +479,10 @@ fn try_split_first_body_row(
     ))
 }
 
-fn cells_max_height(cells: &[Vec<Block>]) -> f32 {
+fn cells_max_height(cells: &[TableCell]) -> f32 {
     cells
         .iter()
-        .map(|c| sum_block_height_slice(c))
+        .map(|c| sum_block_height_slice(&c.blocks))
         .fold(0.0_f32, f32::max)
 }
 
@@ -638,6 +659,18 @@ pub enum BlockDraw {
     },
 }
 
+/// One laid-out table cell. Its content `blocks` already carry their `x`
+/// (shifted into the cell's column at layout time). `col` is the 0-based
+/// start column (cells aren't contiguous when a `rowspan` above leaves a
+/// gap); `colspan`/`rowspan` are how many columns/rows it covers (≥ 1).
+#[derive(Clone)]
+pub struct TableCell {
+    pub blocks: Vec<Block>,
+    pub col: usize,
+    pub colspan: usize,
+    pub rowspan: usize,
+}
+
 #[derive(Clone)]
 pub struct TableRow {
     pub is_header: bool,
@@ -649,9 +682,8 @@ pub struct TableRow {
     /// pagination splits.
     pub header_column: bool,
     pub height: f32,
-    /// One cell per column. Cell content blocks have their `x` already
-    /// shifted into the column at layout time.
-    pub cells: Vec<Vec<Block>>,
+    /// The row's cells in order (a `colspan` cell covers several columns).
+    pub cells: Vec<TableCell>,
 }
 
 /// A reference into a parley `Layout` that may cover all of it or a
@@ -2629,13 +2661,9 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     // value — is kept.)
     body_rows.retain(|r| !r.cells().all(|c| node_text_is_blank(&c.children)));
 
-    // Column count = max cells across all rows.
-    let num_cols = header_rows
-        .iter()
-        .chain(body_rows.iter())
-        .map(|r| r.cell_count())
-        .max()
-        .unwrap_or(0);
+    // Column count under the occupancy model (a `colspan` widens a row; a
+    // `rowspan` reserves columns for following rows).
+    let num_cols = grid_num_cols(&header_rows, &body_rows);
     if num_cols == 0 {
         return Vec::new();
     }
@@ -2691,6 +2719,9 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         _ => Vec::new(),
     };
 
+    // Rowspan occupancy carries across rows (header → body); each row's
+    // layout consumes and ages it.
+    let mut occupied = vec![0usize; num_cols];
     let mut rows_out: Vec<TableRow> = Vec::new();
     for r in header_rows.iter() {
         rows_out.push(layout_row_source(
@@ -2701,6 +2732,7 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             padding,
             header_column,
             &column_aligns,
+            &mut occupied,
             ctx,
         ));
     }
@@ -2713,6 +2745,7 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             padding,
             header_column,
             &column_aligns,
+            &mut occupied,
             ctx,
         ));
     }
@@ -2802,10 +2835,6 @@ impl<'a> RowSource<'a> {
             None
         })
     }
-
-    fn cell_count(&self) -> usize {
-        self.cells().count()
-    }
 }
 
 fn is_cell_node(c: &RenderableTreeNode) -> bool {
@@ -2843,6 +2872,52 @@ fn node_text_is_blank(nodes: &[RenderableTreeNode]) -> bool {
     })
 }
 
+/// A cell's column span from its `colspan` attribute (set by the list-syntax
+/// `{% colspan=N %}` annotation); at least 1.
+fn cell_colspan(tag: &Tag) -> usize {
+    match tag.attributes.get("colspan") {
+        Some(Scalar::Number(n)) if *n >= 1.0 => *n as usize,
+        _ => 1,
+    }
+}
+
+/// A cell's row span from its `rowspan` attribute; at least 1.
+fn cell_rowspan(tag: &Tag) -> usize {
+    match tag.attributes.get("rowspan") {
+        Some(Scalar::Number(n)) if *n >= 1.0 => *n as usize,
+        _ => 1,
+    }
+}
+
+/// Table column count under the occupancy model: a `colspan` widens its row,
+/// and a `rowspan` reserves columns for the following rows.
+fn grid_num_cols(header_rows: &[RowSource<'_>], body_rows: &[RowSource<'_>]) -> usize {
+    let mut occupied: Vec<usize> = Vec::new();
+    let mut num_cols = 0usize;
+    for src in header_rows.iter().chain(body_rows.iter()) {
+        let mut col = 0usize;
+        for cell in src.cells() {
+            while col < occupied.len() && occupied[col] > 0 {
+                col += 1;
+            }
+            let span = cell_colspan(cell);
+            let rowspan = cell_rowspan(cell);
+            while occupied.len() < col + span {
+                occupied.push(0);
+            }
+            for o in occupied.iter_mut().take(col + span).skip(col) {
+                *o = rowspan;
+            }
+            col += span;
+        }
+        num_cols = num_cols.max(occupied.len()).max(col);
+        for o in occupied.iter_mut() {
+            *o = o.saturating_sub(1);
+        }
+    }
+    num_cols
+}
+
 /// A cell's own alignment override from its `align` attribute (set by the
 /// list-syntax `{% align %}` annotation), if any.
 fn cell_align(cell: &Tag) -> Option<parley::layout::Alignment> {
@@ -2867,15 +2942,28 @@ fn layout_row_source(
     padding: f32,
     header_column: bool,
     column_aligns: &[parley::layout::Alignment],
+    occupied: &mut [usize],
     ctx: &mut LayoutCtx<'_>,
 ) -> TableRow {
-    let mut cells: Vec<Vec<Block>> = Vec::with_capacity(column_xs.len());
-    for (col, cell_tag) in src.cells().enumerate() {
-        if col >= column_xs.len() {
+    let ncols = column_xs.len();
+    let mut cells: Vec<TableCell> = Vec::new();
+    let mut col = 0usize;
+    for cell_tag in src.cells() {
+        // Skip columns still held by a `rowspan` from an earlier row.
+        while col < ncols && occupied.get(col).copied().unwrap_or(0) > 0 {
+            col += 1;
+        }
+        if col >= ncols {
             break;
         }
+        let span = cell_colspan(cell_tag).clamp(1, ncols - col);
+        let rowspan = cell_rowspan(cell_tag).max(1);
+        let last = col + span - 1;
         let cell_x = column_xs[col] + padding;
-        let cell_text_width = (column_widths[col] - 2.0 * padding).max(0.0);
+        // The merged cell spans from its first column's content start to its
+        // last column's content end (covering the suppressed internal borders).
+        let spanned_w = (column_xs[last] + column_widths[last]) - column_xs[col];
+        let cell_text_width = (spanned_w - 2.0 * padding).max(0.0);
         // A header column makes column 0 a header cell even in body rows.
         let cell_is_header = is_header || (header_column && col == 0);
         // A cell's own `{% align %}` overrides the column alignment.
@@ -2893,20 +2981,50 @@ fn layout_row_source(
             align,
             ctx,
         );
-        cells.push(blocks);
+        // Reserve this cell's columns for the rows it spans.
+        for o in occupied.iter_mut().take(last + 1).skip(col) {
+            *o = rowspan;
+        }
+        cells.push(TableCell {
+            blocks,
+            col,
+            colspan: span,
+            rowspan,
+        });
+        col += span;
     }
-    while cells.len() < column_xs.len() {
-        cells.push(Vec::new());
+    // Pad any remaining *uncovered* columns with empty single cells.
+    while col < ncols {
+        if occupied.get(col).copied().unwrap_or(0) == 0 {
+            cells.push(TableCell {
+                blocks: Vec::new(),
+                col,
+                colspan: 1,
+                rowspan: 1,
+            });
+        }
+        col += 1;
     }
-    let cell_heights: Vec<f32> = cells
+    // The row's height comes from cells that DON'T span into later rows; a
+    // rowspan cell's content extends downward instead of inflating this row.
+    let mut max_height = cells
         .iter()
-        .map(|blocks| sum_block_height(blocks))
-        .collect();
-    let max_height = cell_heights.iter().cloned().fold(0.0_f32, f32::max);
+        .filter(|c| c.rowspan <= 1)
+        .map(|c| sum_block_height(&c.blocks))
+        .fold(0.0_f32, f32::max);
+    if max_height == 0.0 {
+        // A row of only rowspan cells — fall back to their height.
+        max_height = cells
+            .iter()
+            .map(|c| sum_block_height(&c.blocks))
+            .fold(0.0_f32, f32::max);
+    }
+    // Age the grid: each active rowspan covers one fewer following row.
+    for o in occupied.iter_mut() {
+        *o = o.saturating_sub(1);
+    }
     TableRow {
         is_header,
-        // Striping is decided by row position in `layout_table`; rows start
-        // unfilled and the caller paints alternating body rows.
         fill: None,
         header_column,
         height: max_height + 2.0 * padding,
@@ -2940,30 +3058,33 @@ fn compute_auto_column_widths(
     let mut col_max: Vec<f32> = vec![0.0; num_cols];
 
     for src in header_rows.iter().chain(body_rows.iter()) {
-        for (col, cell_tag) in src.cells().enumerate() {
+        let mut col = 0usize;
+        for cell_tag in src.cells() {
             if col >= num_cols {
                 break;
             }
-            let weight = if matches!(src, RowSource::CellsDirect(_)) {
-                700.0
-            } else {
-                400.0
-            };
-            // body rows from a Row source are non-header; safe approximation
-            // (header detection is parent-based, but cells in a Row in
-            // header_rows still belong to header — measurement weight isn't
-            // critical here, just affects measured widths slightly).
-            let style = TextStyle {
-                font_size: ctx.style.body_font_size,
-                font_weight: weight,
-                line_height: ctx.style.body_line_height,
-                color: ctx.style.text_color.into(),
-                font_families: ctx.body_families,
-                italic: false,
-            };
-            let (cell_min, cell_max) = measure_cell_widths(cell_tag, &style, ctx);
-            col_min[col] = col_min[col].max(cell_min + 2.0 * padding);
-            col_max[col] = col_max[col].max(cell_max + 2.0 * padding);
+            let span = cell_colspan(cell_tag).clamp(1, num_cols - col);
+            // A spanning cell informs no single column's width — the columns
+            // are sized by single-column cells, and the span covers them.
+            if span == 1 {
+                let weight = if matches!(src, RowSource::CellsDirect(_)) {
+                    700.0
+                } else {
+                    400.0
+                };
+                let style = TextStyle {
+                    font_size: ctx.style.body_font_size,
+                    font_weight: weight,
+                    line_height: ctx.style.body_line_height,
+                    color: ctx.style.text_color.into(),
+                    font_families: ctx.body_families,
+                    italic: false,
+                };
+                let (cell_min, cell_max) = measure_cell_widths(cell_tag, &style, ctx);
+                col_min[col] = col_min[col].max(cell_min + 2.0 * padding);
+                col_max[col] = col_max[col].max(cell_max + 2.0 * padding);
+            }
+            col += span;
         }
     }
 

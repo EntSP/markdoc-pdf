@@ -72,3 +72,34 @@ a body cell overrides just that cell.
 * bar {% align="right" %}
 * 1,234
 {% /table %}
+
+## Spanning columns
+
+A `colspan` annotation on a cell merges it across columns (no internal rule).
+
+{% table %}
+* A
+* B
+* C
+---
+* one
+* two
+* three
+---
+* spans the first two columns {% colspan=2 %}
+* C
+{% /table %}
+
+## Spanning rows
+
+A `rowspan` annotation merges a cell down across rows.
+
+{% table %}
+* Name
+* Detail
+---
+* Shared across rows {% rowspan=2 %}
+* first detail
+---
+* second detail
+{% /table %}

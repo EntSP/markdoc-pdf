@@ -657,12 +657,12 @@ fn emit_block(
             let mut row_top = y + *border_thickness;
             for row in rows {
                 tags.enter(TagGroup::new(TagKind::TR(Tag::<kind::TR>::TR)));
-                for (col_idx, cell) in row.cells.iter().enumerate() {
+                for cell in &row.cells {
                     let cell_kind = if row.is_header {
                         TagKind::TH(Tag::<kind::TH>::TH(
                             krilla::tagging::TableHeaderScope::Column,
                         ))
-                    } else if row.header_column && col_idx == 0 {
+                    } else if row.header_column && cell.col == 0 {
                         TagKind::TH(Tag::<kind::TH>::TH(krilla::tagging::TableHeaderScope::Row))
                     } else {
                         TagKind::TD(Tag::<kind::TD>::TD)
@@ -670,7 +670,7 @@ fn emit_block(
                     tags.enter(TagGroup::new(cell_kind));
                     emit_blocks(
                         surface,
-                        cell,
+                        &cell.blocks,
                         row_top + *cell_padding,
                         font_cache,
                         links,
@@ -718,42 +718,80 @@ fn emit_block(
                 }
                 let last_h = h_ys.len() - 1;
 
-                // Internal horizontals (drawn for both `Grid` and `Horizontal`).
-                surface.set_stroke(Some(border_stroke));
-                for (i, &hy) in h_ys.iter().enumerate() {
-                    if i != 0 && i != last_h {
-                        line(surface, *x, hy, *x + total_width, hy);
-                    }
-                }
-
-                // Verticals (`Grid` only): internal in border colour, the
-                // left/right frame in the edge colour.
-                if matches!(border_style, TableBorders::Grid) {
-                    let top = y;
-                    let bottom = y + total_height;
-                    let mut v_xs = Vec::with_capacity(column_widths.len() + 1);
-                    let mut v_x = *x + *border_thickness * 0.5;
+                // Vertical boundary x positions.
+                let mut v_xs = Vec::with_capacity(column_widths.len() + 1);
+                let mut v_x = *x + *border_thickness * 0.5;
+                v_xs.push(v_x);
+                for col_w in column_widths {
+                    v_x += *col_w + *border_thickness;
                     v_xs.push(v_x);
-                    for col_w in column_widths {
-                        v_x += *col_w + *border_thickness;
-                        v_xs.push(v_x);
-                    }
-                    let last_v = v_xs.len() - 1;
-                    for (i, &vx) in v_xs.iter().enumerate() {
-                        if i != 0 && i != last_v {
-                            line(surface, vx, top, vx, bottom);
+                }
+                let last_v = v_xs.len() - 1;
+
+                let nrows = rows.len();
+                let ncols = column_widths.len();
+                let top = y;
+                let bottom = y + total_height;
+                let left = *x;
+                let right = *x + total_width;
+
+                // Occupancy grid: which cell (by its `(start_row, start_col)`)
+                // owns each `(row, col)`. A merged cell expands over its span,
+                // so two adjacent slots sharing an owner mean a span straddles
+                // the rule between them — which is then suppressed.
+                let mut owner = vec![vec![(usize::MAX, usize::MAX); ncols.max(1)]; nrows.max(1)];
+                for (r, row) in rows.iter().enumerate() {
+                    for cell in &row.cells {
+                        for dr in 0..cell.rowspan.max(1) {
+                            for dc in 0..cell.colspan.max(1) {
+                                let (rr, cc) = (r + dr, cell.col + dc);
+                                if rr < nrows && cc < ncols {
+                                    owner[rr][cc] = (r, cell.col);
+                                }
+                            }
                         }
                     }
-                    surface.set_stroke(Some(edge_stroke));
-                    line(surface, v_xs[0], top, v_xs[0], bottom);
-                    line(surface, v_xs[last_v], top, v_xs[last_v], bottom);
-                } else {
-                    surface.set_stroke(Some(edge_stroke));
+                }
+                let merged = |a: (usize, usize), b: (usize, usize)| a == b && a.0 != usize::MAX;
+
+                // Internal horizontals (Grid & Horizontal): per-column
+                // segments, skipping where a rowspan straddles the boundary.
+                surface.set_stroke(Some(border_stroke.clone()));
+                for hb in 1..last_h {
+                    for c in 0..ncols {
+                        if hb < nrows && merged(owner[hb - 1][c], owner[hb][c]) {
+                            continue;
+                        }
+                        let xl = if c == 0 { left } else { v_xs[c] };
+                        let xr = if c + 1 == ncols { right } else { v_xs[c + 1] };
+                        line(surface, xl, h_ys[hb], xr, h_ys[hb]);
+                    }
                 }
 
-                // Outer horizontals (edge colour): top + bottom.
-                line(surface, *x, h_ys[0], *x + total_width, h_ys[0]);
-                line(surface, *x, h_ys[last_h], *x + total_width, h_ys[last_h]);
+                // Internal verticals (Grid only): per-row segments, skipping
+                // where a colspan straddles the boundary.
+                if matches!(border_style, TableBorders::Grid) {
+                    for vb in 1..last_v {
+                        for r in 0..nrows {
+                            if vb < ncols && merged(owner[r][vb - 1], owner[r][vb]) {
+                                continue;
+                            }
+                            let yt = if r == 0 { top } else { h_ys[r] };
+                            let yb = if r + 1 == nrows { bottom } else { h_ys[r + 1] };
+                            line(surface, v_xs[vb], yt, v_xs[vb], yb);
+                        }
+                    }
+                }
+
+                // Outer frame (edge colour): top + bottom always; left + right
+                // for `Grid`.
+                surface.set_stroke(Some(edge_stroke));
+                line(surface, left, h_ys[0], right, h_ys[0]);
+                line(surface, left, h_ys[last_h], right, h_ys[last_h]);
+                if matches!(border_style, TableBorders::Grid) {
+                    line(surface, v_xs[0], top, v_xs[0], bottom);
+                    line(surface, v_xs[last_v], top, v_xs[last_v], bottom);
+                }
 
                 surface.set_stroke(None);
             }

@@ -696,7 +696,7 @@ fn walk_anchors(
                 let mut row_top = y + *border_thickness;
                 for row in rows {
                     for cell in &row.cells {
-                        walk_anchors(cell, page_idx, row_top + *cell_padding, map);
+                        walk_anchors(&cell.blocks, page_idx, row_top + *cell_padding, map);
                     }
                     row_top += row.height + *border_thickness;
                 }
@@ -1074,7 +1074,7 @@ fn walk_for_figures(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Figu
             block::BlockDraw::Table { rows, .. } => {
                 for row in rows {
                     for cell in &row.cells {
-                        walk_for_figures(cell, page_idx, out);
+                        walk_for_figures(&cell.blocks, page_idx, out);
                     }
                 }
             }
@@ -1144,7 +1144,7 @@ fn walk_for_headings(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Hea
             block::BlockDraw::Table { rows, .. } => {
                 for row in rows {
                     for cell in &row.cells {
-                        walk_for_headings(cell, page_idx, out);
+                        walk_for_headings(&cell.blocks, page_idx, out);
                     }
                 }
             }

@@ -1,0 +1,10 @@
+# decorations.style.toml
+#
+# Companion style for `decorations.mdoc`. The only non-default setting is
+# link underlining (off by default), so that every inline decoration —
+# including the underline — is visible when the two are rendered together.
+
+[link]
+color               = { r = 30, g = 100, b = 175 }   # hyperlink blue
+underline           = true
+underline_thickness = 0.8

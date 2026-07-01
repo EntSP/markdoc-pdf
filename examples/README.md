@@ -46,6 +46,7 @@ small and readable.
 | `below.style.toml` | Caption positioned **below** the figure / table instead of above. |
 | `copyright-footer.style.toml` | Three-slot footer (copyright left, confidentiality + title centre, page-of-total right). Reference for footer authoring. |
 | `link-style.style.toml` | `[link]` block exercising all four knobs (`color`, `italic`, `bold`, `underline`). Renders links in bold italic purple with an underline. |
+| `decorations.style.toml` (+ `decorations.mdoc`) | Every inline text **decoration** in one document: bold, italic, strikethrough, `inline code` (monospace), links (coloured + underlined via `[link]`), and `{% color %}` spans — shown alone, mid-paragraph, and combined. The style only enables link underlining so all decorations are visible together. |
 | `callout-styles.style.toml` | Every callout-related knob spelled out: `callout_padding`, `callout_accent_width`, `callout_space_after`, plus per-severity `[callout_styles.<kind>]` blocks for all seven kinds. Values match the built-in defaults — copy and edit. |
 | `coverpage.style.toml` (+ `coverpage.mdoc`) | Synthesised cover page: large title at the top, hero image below (`logo_position = "below_title"`), then subtitle / authors / publication date. Renders against `coverpage.mdoc`, which carries the rich frontmatter the cover page needs. |
 | `badges.style.toml` (+ `badges.mdoc`) | Ordered-list circle badges via `[list_marker]`: numbers in filled circles, with `ordered_sequences` cycling `decimal` → `lower-alpha` as the list nests (1 → a). |

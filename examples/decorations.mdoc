@@ -1,0 +1,39 @@
+---
+title: Inline text decorations
+---
+
+# Inline text decorations {% #top %}
+
+This document exercises every inline decoration the renderer applies to a
+run of text: weight, slant, strikethrough, inline code, links, and colour.
+Render it with `decorations.style.toml` so the link underline shows.
+
+## One at a time
+
+- **Bold** — from `**bold**`
+- _Italic_ — from `_italic_`
+- ~~Strikethrough~~ — from `~~struck~~`, drawn as a rule through the text
+- `inline code` — from backticks, set in a monospace font
+- [A hyperlink](https://example.com) — tinted, and underlined by this style
+- {% color value="#c026d3" %}Coloured text{% /color %} — an inline colour span set with a hex value
+
+## Mid-paragraph
+
+A single sentence can turn a run **bold**, _italic_, ~~struck through~~,
+into `inline_code()`, a [hyperlink](https://example.com/docs), or
+{% color value="#0891b2" %}a custom colour{% /color %} — each decoration
+applies to just its own span while the prose flows around it.
+
+## Combining them
+
+Decorations nest, so a phrase can be **_bold and italic_** at once, a
+{% color value="#dc2626" %}**bold red caution**{% /color %}, or a
+deprecated call shown as ~~`legacy_api()`~~ — monospace with a strike
+through it.
+
+## Links
+
+Every `[text](url)` link takes the document's `[link]` style. An external
+target like [the docs](https://example.com/docs) opens in a browser; an
+in-document jump such as [back to the top](#top) resolves to a page
+destination. Both are underlined here.

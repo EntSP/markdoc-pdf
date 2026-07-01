@@ -4175,13 +4175,30 @@ fn layout_cell_content(
 // ── Media (img / media) ─────────────────────────────────────────────────
 
 fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
-    // `<img src=…>` from markdown image syntax, or `{% media src=… %}`
-    // Markdoc tag. Both store the URI in `src`.
-    let Some(src) = tag.attributes.get("src").and_then(|v| match v {
-        Scalar::String(s) => Some(s.clone()),
+    // Source resolution. Either an explicit `src` (markdown `![]()` or
+    // `{% media src=… %}`), or an Arca `id` (`{% media id="<uuid>" /%}`).
+    // In production Scriptor rewrites `id` to a concrete `src` before this
+    // runs; locally — the tech-writer workflow while Arca isn't ready — we
+    // resolve the id ourselves by probing `<id>.<ext>` under the assets
+    // root for the extensions we can decode (content is re-sniffed below,
+    // so a wrong extension still works). `src` wins when both are present.
+    let src_attr = tag.attributes.get("src").and_then(|v| match v {
+        Scalar::String(s) if !s.trim().is_empty() => Some(s.clone()),
         _ => None,
-    }) else {
-        return placeholder(x, width, ctx, "[media: missing src]");
+    });
+    let id_attr = tag.attributes.get("id").and_then(|v| match v {
+        Scalar::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        _ => None,
+    });
+    let candidates: Vec<String> = if let Some(s) = &src_attr {
+        vec![s.clone()]
+    } else if let Some(id) = &id_attr {
+        const EXTS: [&str; 6] = ["webp", "png", "jpg", "jpeg", "gif", "svg"];
+        let mut v: Vec<String> = EXTS.iter().map(|e| format!("{id}.{e}")).collect();
+        v.push(id.clone()); // bare id: already-extensioned or extensionless file
+        v
+    } else {
+        return placeholder(x, width, ctx, "[media: missing src or id]");
     };
 
     // Alt text:
@@ -4202,19 +4219,38 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         }
     };
 
-    let bytes = match ctx.assets.fetch(&src) {
-        Ok(b) => b,
-        Err(e) => {
-            // Loud-on-stderr so a typo'd path doesn't slip past a
-            // tech writer iterating locally — the placeholder in the
-            // PDF body is also there but easy to miss in a long doc.
-            eprintln!("warning: media unavailable: {src} — {e}");
-            let msg = if alt.is_empty() {
-                format!("[media unavailable: {src} — {e}]")
-            } else {
-                format!("[{alt}]")
-            };
-            return placeholder(x, width, ctx, &msg);
+    // Fetch the first candidate that resolves. A missing file fails the
+    // open immediately (no bytes read), so probing extensions is cheap.
+    let (src, bytes) = {
+        let mut found: Option<(String, Vec<u8>)> = None;
+        let mut last_err: Option<String> = None;
+        for cand in &candidates {
+            match ctx.assets.fetch(cand) {
+                Ok(b) => {
+                    found = Some((cand.clone(), b));
+                    break;
+                }
+                Err(e) => last_err = Some(e.to_string()),
+            }
+        }
+        match found {
+            Some(fb) => fb,
+            None => {
+                // Loud-on-stderr so a typo'd path / unknown id doesn't slip
+                // past a tech writer iterating locally.
+                let what = src_attr
+                    .clone()
+                    .or_else(|| id_attr.clone())
+                    .unwrap_or_default();
+                let err = last_err.unwrap_or_else(|| "not found".to_string());
+                eprintln!("warning: media unavailable: {what} — {err}");
+                let msg = if alt.is_empty() {
+                    format!("[media unavailable: {what}]")
+                } else {
+                    format!("[{alt}]")
+                };
+                return placeholder(x, width, ctx, &msg);
+            }
         }
     };
 

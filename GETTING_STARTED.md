@@ -166,6 +166,28 @@ attributes — useful when alt text gets long:
 {% media src="images/diagram.png" alt="Side view of the V60 dripper sitting on a glass server, with a paper filter and ground coffee inside." /%}
 ```
 
+### `{% media id="…" /%}` — references by asset id (local workflow)
+
+Adeptus documents reference media by an Arca asset **id** rather than a
+path:
+
+```markdown
+{% media id="0a02bb82-1a68-4c5c-883f-406361e1235e" /%}
+{% img   id="0a02bb82-1a68-4c5c-883f-406361e1235e" /%}
+```
+
+In production, Scriptor fetches the asset and rewrites the reference to a
+concrete `src` (e.g. `src="file:///…/0a02bb82….webp"`) before rendering.
+While Arca isn't wired up, markdoc-pdf resolves the id **locally**: put the
+file, named `<id>.<ext>`, under your `--assets-root`, and the renderer
+finds it (it probes `.webp` / `.png` / `.jpg` / `.jpeg` / `.gif` / `.svg`,
+then the bare id; the actual format is detected from the file contents, so
+a wrong extension still works). A missing id degrades to the usual
+placeholder plus a `warning: media unavailable: …` line — so a writer can
+drop the downloaded assets into one folder and preview a real Adeptus
+document without changing its `id=` references. `{% img %}` is an alias of
+`{% media %}`, so both spellings resolve identically.
+
 ### `{% footnote %}` — inline footnotes
 
 ```markdown

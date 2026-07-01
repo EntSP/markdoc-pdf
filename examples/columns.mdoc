@@ -1,0 +1,42 @@
+---
+title: Side-by-side columns
+---
+
+# Side-by-side columns
+
+`\{% columns %}` places its children in equal-width columns, side by side.
+Each column is either a list item (`*`) or a blank-line-separated block; the
+`gap` attribute (points) sets the space between them. Render with
+`--assets-root examples` so the swatch images resolve.
+
+## Two images — list form
+
+{% columns %}
+* ![](swatch.png)
+* ![](swatch.svg)
+{% /columns %}
+
+## Three columns, wider gap — block form
+
+{% columns gap=28 %}
+![](swatch.png)
+
+![](swatch.svg)
+
+![](swatch.png)
+{% /columns %}
+
+## Per-column captions
+
+Put a `\{% caption %}` and its image in one list item, separated by a blank
+line, so they stay distinct blocks and the caption attaches to the image:
+
+{% columns %}
+* {% caption %}Raster swatch{% /caption %}
+
+  ![](swatch.png)
+
+* {% caption %}Vector swatch{% /caption %}
+
+  ![](swatch.svg)
+{% /columns %}

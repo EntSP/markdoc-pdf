@@ -1070,6 +1070,9 @@ fn layout_node(
 
         "table" => layout_table(tag, x, width, ctx),
 
+        // `{% columns %}` — place children side by side in equal columns.
+        "columns" => layout_columns(tag, x, width, ctx),
+
         "img" | "media" => layout_media(tag, x, width, ctx),
 
         // `{% toc /%}` marks where a start-positioned table of contents
@@ -2605,6 +2608,92 @@ fn table_rows_source(tag: &Tag) -> &Tag {
     tag
 }
 
+/// `{% columns %}` — lay children out in equal-width columns, side by side.
+///
+/// Two authoring forms:
+///   - a markdown list, one item per column (each item may hold several
+///     blocks — e.g. an image plus a `{% caption %}`);
+///   - or blank-line-separated blocks, one block per column.
+///
+/// Implemented as a borderless, equal-width single-row table so it reuses
+/// the whole table path (column widths, row height, pagination, and — now —
+/// image cells). `gap` (points, default 16) sets the space between columns.
+fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    // Each column is a list of blocks. Prefer list items; otherwise each
+    // block-level child of the tag is its own column.
+    let list_children = tag.children.iter().find_map(|c| match c {
+        RenderableTreeNode::Tag(t) if matches!(t.name.as_str(), "ul" | "ol") => {
+            Some(t.children.as_slice())
+        }
+        _ => None,
+    });
+    let columns: Vec<Vec<RenderableTreeNode>> = match list_children {
+        Some(items) => items
+            .iter()
+            .filter_map(|li| match li {
+                RenderableTreeNode::Tag(t) if t.name == "li" => Some(t.children.clone()),
+                _ => None,
+            })
+            .collect(),
+        None => tag
+            .children
+            .iter()
+            .filter(|c| matches!(c, RenderableTreeNode::Tag(_)))
+            .map(|c| vec![c.clone()])
+            .collect(),
+    };
+    if columns.is_empty() {
+        return layout_children(&tag.children, x, width, ctx);
+    }
+    let n = columns.len();
+
+    // Space between columns (points). Realised as cell padding = gap/2, so
+    // two adjacent columns are `gap` apart.
+    let gap = tag
+        .attributes
+        .get("gap")
+        .and_then(|s| match s {
+            Scalar::Number(v) => Some(*v as f32),
+            Scalar::String(s) => s.trim().parse::<f32>().ok(),
+            _ => None,
+        })
+        .unwrap_or(16.0)
+        .max(0.0);
+
+    // Synthesise <table><tr><td>…</td>…</tr>, borderless with equal weights.
+    let tds: Vec<RenderableTreeNode> = columns
+        .into_iter()
+        .map(|blocks| {
+            RenderableTreeNode::Tag(Box::new(Tag {
+                name: "td".to_string(),
+                attributes: std::collections::HashMap::new(),
+                children: blocks,
+            }))
+        })
+        .collect();
+    let tr = RenderableTreeNode::Tag(Box::new(Tag {
+        name: "tr".to_string(),
+        attributes: std::collections::HashMap::new(),
+        children: tds,
+    }));
+    let mut table_attrs = std::collections::HashMap::new();
+    table_attrs.insert("borders".to_string(), Scalar::String("none".to_string()));
+    table_attrs.insert(
+        "column_weights".to_string(),
+        Scalar::String(vec!["1"; n].join(" ")),
+    );
+    table_attrs.insert(
+        "cell_padding".to_string(),
+        Scalar::Number((gap / 2.0) as f64),
+    );
+    let table = Tag {
+        name: "table".to_string(),
+        attributes: table_attrs,
+        children: vec![tr],
+    };
+    layout_table(&table, x, width, ctx)
+}
+
 fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
     // Per-table style overrides from the `{% table … %}` attributes; a
     // plain pipe table has none, so everything inherits the document style.
@@ -3202,6 +3291,8 @@ fn layout_cell_content(
                     | "h5"
                     | "h6"
                     | "table"
+                    | "img"
+                    | "media"
             )
         } else {
             false

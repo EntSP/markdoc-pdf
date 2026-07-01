@@ -1360,15 +1360,19 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
             });
         }
     }
-    // Stamp the underline stroke on each link so emit can stroke a
-    // rule under it. Stays None when the style disables underlining.
+    // Express the link underline as a parley decoration over the link's
+    // byte range, so the unified decoration pass draws it. Skipped when the
+    // style disables underlining; the colour follows the link text tint
+    // pushed above.
     if link_style.underline {
-        let underline = super::inline::UnderlineStroke {
-            color: link_color,
-            thickness: link_style.underline_thickness,
-        };
-        for link in &mut inlines.links {
-            link.underline = Some(underline.clone());
+        for link in &inlines.links {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Underline {
+                    thickness: link_style.underline_thickness,
+                },
+            });
         }
     }
     // Hyphenate plain paragraphs only — inline ranges, links, anchors
@@ -1555,7 +1559,6 @@ pub fn build_toc_blocks(
             end: body.len(),
             href: format!("#{}", entry.target_anchor_id),
             title: None,
-            underline: None,
         }];
         let slice = TextSlice::whole(layout, body, links, entry_x);
         blocks.push(Block {
@@ -1641,7 +1644,6 @@ pub fn build_list_section_blocks(
             end: body.len(),
             href: format!("#{}", entry.target_anchor_id),
             title: None,
-            underline: None,
         }];
         let slice = TextSlice::whole(layout, body, links, column_x);
         blocks.push(Block {

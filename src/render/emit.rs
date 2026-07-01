@@ -199,7 +199,7 @@ fn emit_block(
                     slice.skip_y,
                     &slice.links,
                 );
-                draw_strikethroughs(
+                draw_decorations(
                     surface,
                     &slice.layout,
                     slice.x,
@@ -237,15 +237,6 @@ fn emit_block(
                         slice.line_range.clone(),
                         slice.skip_y,
                     );
-                    draw_link_underlines(
-                        surface,
-                        &slice.layout,
-                        slice.x,
-                        y,
-                        lr,
-                        slice.line_range.clone(),
-                        slice.skip_y,
-                    );
                     if line_rects.is_empty() {
                         continue;
                     }
@@ -278,7 +269,7 @@ fn emit_block(
                     slice.line_range.clone(),
                     slice.skip_y,
                 );
-                draw_strikethroughs(
+                draw_decorations(
                     surface,
                     &slice.layout,
                     slice.x,
@@ -293,15 +284,6 @@ fn emit_block(
                         y,
                         lr,
                         links,
-                        slice.line_range.clone(),
-                        slice.skip_y,
-                    );
-                    draw_link_underlines(
-                        surface,
-                        &slice.layout,
-                        slice.x,
-                        y,
-                        lr,
                         slice.line_range.clone(),
                         slice.skip_y,
                     );
@@ -979,80 +961,8 @@ fn _silence_rgb(_: rgb::Color) {}
 #[allow(dead_code)]
 fn _silence_point(_: Point) {}
 
-/// Stroke a horizontal rule under each line of the link's text. Mirrors
-/// the geometry walk in [`collect_link_rects_per_line`] but, instead of
-/// pushing rects, emits a stroked path. Called after the glyphs of the
-/// containing `TextSlice` are drawn — the rule lands just below each
-/// line's baseline so it doesn't clip glyph descenders.
-fn draw_link_underlines(
-    surface: &mut krilla::surface::Surface<'_>,
-    layout: &Layout<rgb::Color>,
-    origin_x: f32,
-    origin_y_top: f32,
-    link: &LinkRange,
-    line_range: std::ops::Range<usize>,
-    skip_y: f32,
-) {
-    let Some(stroke_spec) = &link.underline else {
-        return;
-    };
-    for (i, line_obj) in layout.lines().enumerate() {
-        if i < line_range.start {
-            continue;
-        }
-        if i >= line_range.end {
-            break;
-        }
-        let metrics = line_obj.metrics();
-        let baseline = origin_y_top - skip_y + metrics.baseline;
-        // Park the rule one descender-half below the baseline. Far
-        // enough to clear most glyphs, close enough to read as part
-        // of the word.
-        let underline_y = baseline + metrics.descent * 0.5;
-
-        let mut x = origin_x + metrics.offset;
-        let mut link_min_x: Option<f32> = None;
-        let mut link_max_x: f32 = origin_x;
-        for run in line_obj.runs() {
-            for cluster in run.visual_clusters() {
-                if cluster.is_ligature_continuation() {
-                    continue;
-                }
-                let range = cluster.text_range();
-                let in_link = range.start < link.end && range.end > link.start;
-                let advance = cluster.advance();
-                if in_link {
-                    if link_min_x.is_none() {
-                        link_min_x = Some(x);
-                    }
-                    link_max_x = x + advance;
-                }
-                x += advance;
-            }
-        }
-        let Some(min_x) = link_min_x else {
-            continue;
-        };
-
-        let mut pb = PathBuilder::new();
-        pb.move_to(min_x, underline_y);
-        pb.line_to(link_max_x, underline_y);
-        let path = pb.finish().unwrap();
-        surface.set_stroke(Some(Stroke {
-            paint: stroke_spec.color.into(),
-            width: stroke_spec.thickness,
-            opacity: NormalizedF32::ONE,
-            ..Default::default()
-        }));
-        surface.draw_path(&path);
-        // Same hygiene as elsewhere — keep the surface stroke clear
-        // so subsequent text emits stay on rendering-mode 0.
-        surface.set_stroke(None);
-    }
-}
-
 /// Stroke a horizontal line `[x0, x1]` at `y`. Shared by the
-/// strikethrough pass; clears the surface stroke afterwards.
+/// decoration pass; clears the surface stroke afterwards.
 fn stroke_hline(
     surface: &mut krilla::surface::Surface<'_>,
     x0: f32,
@@ -1079,13 +989,49 @@ fn stroke_hline(
     }
 }
 
-/// Paint strikethrough decorations. parley records `Strikethrough(true)`
-/// on a run's resolved style, but this krilla bridge draws only glyphs —
-/// so the line is painted here in a separate pass over the same layout,
-/// mirroring [`draw_link_underlines`]. Position and thickness come from
-/// the run's font metrics; the colour matches the struck text. Each
-/// contiguous struck span on a line becomes one stroke.
-fn draw_strikethroughs(
+/// Extend, flush, or open the running span for one decoration kind as
+/// [`draw_decorations`] walks clusters. `active` is `Some((y, thickness))`
+/// when the current cluster carries the decoration; `None` flushes any
+/// open span.
+fn step_decoration(
+    surface: &mut krilla::surface::Surface<'_>,
+    open: &mut Option<(f32, f32, f32, f32, rgb::Color)>,
+    active: Option<(f32, f32)>,
+    color: rgb::Color,
+    x: f32,
+    advance: f32,
+) {
+    match active {
+        // Same vertical position → extend the current span.
+        Some((y, _)) if matches!(open, Some(s) if (s.2 - y).abs() < 0.05) => {
+            open.as_mut().unwrap().1 = x + advance;
+        }
+        // Newly active, or the position changed (e.g. a differently-sized
+        // run) → flush any open span and start a fresh one.
+        Some((y, thickness)) => {
+            if let Some((x0, x1, sy, t, c)) = open.take() {
+                stroke_hline(surface, x0, x1, sy, t, c);
+            }
+            *open = Some((x, x + advance, y, thickness, color));
+        }
+        // Not decorated → flush.
+        None => {
+            if let Some((x0, x1, sy, t, c)) = open.take() {
+                stroke_hline(surface, x0, x1, sy, t, c);
+            }
+        }
+    }
+}
+
+/// Paint text decorations — underline and strikethrough — in one pass over
+/// the layout. parley records the decoration on a run's resolved style
+/// (`Style::underline` / `Style::strikethrough`) but this krilla bridge
+/// draws only glyphs, so the rules are stroked here. Vertical position and
+/// default thickness come from the run's font metrics (`RunMetrics`); an
+/// explicit `UnderlineSize` (which links carry) overrides the thickness.
+/// The colour follows the text brush — link text is already tinted, so its
+/// underline matches. Each contiguous decorated span becomes one stroke.
+fn draw_decorations(
     surface: &mut krilla::surface::Surface<'_>,
     layout: &Layout<rgb::Color>,
     origin_x: f32,
@@ -1102,38 +1048,55 @@ fn draw_strikethroughs(
         }
         let baseline = origin_y_top - skip_y + line.metrics().baseline;
         let mut x = origin_x + line.metrics().offset;
-        // Open struck span: (x0, x1, strike_y, thickness, colour).
-        let mut span: Option<(f32, f32, f32, f32, rgb::Color)> = None;
+        // One running span per decoration kind: (x0, x1, y, thickness, colour).
+        let mut underline: Option<(f32, f32, f32, f32, rgb::Color)> = None;
+        let mut strike: Option<(f32, f32, f32, f32, rgb::Color)> = None;
         for run in line.runs() {
             let rm = run.metrics();
-            let strike_off = rm.strikethrough_offset;
-            let thickness = rm.strikethrough_size.max(0.5);
             for cluster in run.visual_clusters() {
                 if cluster.is_ligature_continuation() {
-                    if let Some(s) = span.as_mut() {
+                    if let Some(s) = underline.as_mut() {
+                        s.1 = x;
+                    }
+                    if let Some(s) = strike.as_mut() {
                         s.1 = x;
                     }
                     continue;
                 }
                 let advance = cluster.advance();
-                let style_idx = cluster.glyphs().next().map(|g| g.style_index as usize);
-                let struck = style_idx
-                    .map(|idx| layout.styles()[idx].strikethrough.is_some())
-                    .unwrap_or(false);
-                if struck {
-                    let color = layout.styles()[style_idx.unwrap()].brush;
-                    let strike_y = baseline - strike_off;
-                    match span.as_mut() {
-                        Some(s) => s.1 = x + advance,
-                        None => span = Some((x, x + advance, strike_y, thickness, color)),
+                let Some(glyph) = cluster.glyphs().next() else {
+                    // No glyph (unexpected) → treat as a gap: flush open spans.
+                    if let Some((x0, x1, y, t, c)) = underline.take() {
+                        stroke_hline(surface, x0, x1, y, t, c);
                     }
-                } else if let Some((x0, x1, y, t, c)) = span.take() {
-                    stroke_hline(surface, x0, x1, y, t, c);
-                }
+                    if let Some((x0, x1, y, t, c)) = strike.take() {
+                        stroke_hline(surface, x0, x1, y, t, c);
+                    }
+                    x += advance;
+                    continue;
+                };
+                let style = &layout.styles()[glyph.style_index as usize];
+                let ul = style.underline.as_ref().map(|d| {
+                    (
+                        baseline - d.offset.unwrap_or(rm.underline_offset),
+                        d.size.unwrap_or(rm.underline_size).max(0.4),
+                    )
+                });
+                let st = style.strikethrough.as_ref().map(|d| {
+                    (
+                        baseline - d.offset.unwrap_or(rm.strikethrough_offset),
+                        d.size.unwrap_or(rm.strikethrough_size).max(0.4),
+                    )
+                });
+                step_decoration(surface, &mut underline, ul, style.brush, x, advance);
+                step_decoration(surface, &mut strike, st, style.brush, x, advance);
                 x += advance;
             }
         }
-        if let Some((x0, x1, y, t, c)) = span.take() {
+        if let Some((x0, x1, y, t, c)) = underline.take() {
+            stroke_hline(surface, x0, x1, y, t, c);
+        }
+        if let Some((x0, x1, y, t, c)) = strike.take() {
             stroke_hline(surface, x0, x1, y, t, c);
         }
     }

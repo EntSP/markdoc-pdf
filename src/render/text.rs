@@ -144,6 +144,16 @@ pub fn build_layout(
                     r.start..r.end,
                 );
             }
+            InlineProp::Underline { thickness } => {
+                // Position is font-derived (drawn from RunMetrics); only the
+                // configured thickness is pinned. Colour follows the text
+                // brush, which links already tint via `Color`.
+                builder.push(StyleProperty::Underline(true), r.start..r.end);
+                builder.push(
+                    StyleProperty::UnderlineSize(Some(thickness)),
+                    r.start..r.end,
+                );
+            }
             InlineProp::Color(color) => builder.push(StyleProperty::Brush(color), r.start..r.end),
         }
     }

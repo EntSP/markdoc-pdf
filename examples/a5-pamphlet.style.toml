@@ -1,0 +1,35 @@
+# a5-pamphlet.style.toml
+#
+# A5 portrait pages, sized to be imposed two-up onto an A4 sheet and
+# folded into a saddle-stitch pamphlet. See examples/impose.sh for the
+# render → fold pipeline.
+#
+# markdoc-pdf produces the A5 *pages* only, in reading order 1, 2, 3, …
+# Turning those into fold-ready A4 sheets (reorder + 2-up) is the job of
+# the imposition step — the renderer does not impose. pdfbook2 pads the
+# count up to a multiple of four with blanks, so you don't have to.
+#
+# Geometry: A5 portrait = 148 × 210 mm; two side by side = A4 landscape.
+
+page_width  = 419.5   # A5 portrait width  (148 mm)
+page_height = 595.3   # A5 portrait height (210 mm)
+margin_x    = 40.0    # 72 pt is heavy on a small page
+margin_y    = 40.0
+
+body_font_size        = 10.0   # a touch smaller to suit the format
+body_line_height      = 1.4
+paragraph_space_after = 7.0
+
+[hyphenation]
+enabled = true        # narrow column — hyphenation keeps the rag tidy
+
+# Centred page number. Logical page order survives imposition, so {page}
+# stays correct after folding. The front cover (page 1) is left bare.
+[page_decoration]
+skip_first_page = true
+
+[page_decoration.footer]
+center           = "{page}"
+font_size        = 8.0
+color            = { r = 110, g = 110, b = 120 }
+margin_from_edge = 22.0

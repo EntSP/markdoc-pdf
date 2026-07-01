@@ -53,8 +53,28 @@ small and readable.
 | `table-styling.style.toml` (+ `table-styling.mdoc`) | Styling tables *differently within one document*: a document-wide table style (incl. zebra striping via `table_stripe_color`) plus per-table overrides by wrapping a pipe table in `{% table %}` with `borders`, `border_color`, `edge_color`, `header_background`, `stripe` (colour or `none`), `column_weights`, `cell_padding`, and `header_column` (make column 0 row headers) attributes. |
 | `table-forms.style.toml` (+ `table-forms.mdoc`) | The table *forms* this renderer supports: a plain pipe table, a header-less table (blank header row dropped), a header column (`{% table header_column=true %}`), and per-column text alignment via CommonMark `:---` / `:-:` / `---:` delimiter markers. |
 | `table-list-syntax.mdoc` (+ `table-forms.style.toml`) | The Markdoc **list-syntax** `{% table %}` (cells as `*` items, rows separated by `---`): basic, header-less (leading `---`), rich content (code, lists, and `{% list type="checkmark" %}` in cells), column / per-cell alignment via `{% align %}`, and `{% colspan=N %}` / `{% rowspan=N %}` (merged columns and rows). Builds the same table structure as a pipe table. |
+| `a5-pamphlet.style.toml` (+ `a5-pamphlet.mdoc`) | A5 portrait pages (148 × 210 mm) sized to be imposed two-up onto an A4 sheet and folded into a saddle-stitch pamphlet: tighter margins, smaller body font, and a centred page-number footer (bare front cover via `skip_first_page`). The renderer makes the A5 *pages* only — `impose.sh` (below) wraps render → `pdfbook2` into fold-ready A4 sheets, since imposition is not a renderer feature. |
 | `pdfa.style.toml` | One-liner: `pdf_export = "a2_b"`. Switches to PDF/A-2B output. |
 | `ua1.style.toml` | One-liner: `pdf_export = "u_a1"`. Switches to PDF/UA-1 (accessibility) output. |
+
+## Pamphlet imposition
+
+`impose.sh` turns the A5 pamphlet — or any A5 `.mdoc` — into a
+fold-ready A4 booklet. It renders the A5 pages, then runs `pdfbook2`
+to reorder them and place two per sheet (padding to a multiple of four
+with blanks). The renderer never imposes; that is entirely this
+script's `pdfbook2` step.
+
+```sh
+examples/impose.sh                              # bundled example → a5-pamphlet-booklet.pdf
+examples/impose.sh in.mdoc style.toml out.pdf   # any A5 document
+```
+
+`pdfbook2` ships with TeX Live (`texlive-pdfbook2` on Fedora,
+`texlive-extra-utils` on Debian). Without it the A5 pages are still
+written, and you can impose from your print dialog instead (Booklet
+layout, A4 paper, duplex flipped on the **short** edge). Print
+double-sided, fold, staple the spine.
 
 ## Source fixture
 

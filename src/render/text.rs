@@ -131,6 +131,19 @@ pub fn build_layout(
             InlineProp::Strikethrough => {
                 builder.push(StyleProperty::Strikethrough(true), r.start..r.end)
             }
+            InlineProp::Code => {
+                // Inline code: switch this range to the monospace family so
+                // it stands out from prose. Size and colour stay the body's
+                // so it baselines cleanly mid-sentence.
+                let mono: Vec<FontFamilyName<'static>> = monospace_families("Noto Sans Mono")
+                    .into_iter()
+                    .map(|f| FontFamilyName::Named(Cow::Borrowed(f)))
+                    .collect();
+                builder.push(
+                    StyleProperty::FontFamily(FontFamily::List(Cow::Owned(mono))),
+                    r.start..r.end,
+                );
+            }
             InlineProp::Color(color) => builder.push(StyleProperty::Brush(color), r.start..r.end),
         }
     }

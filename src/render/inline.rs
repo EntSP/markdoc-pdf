@@ -9,6 +9,9 @@ pub enum InlineProp {
     Bold,
     Italic,
     Strikethrough,
+    /// Inline code span (`` `like_this` ``) — rendered in the monospace
+    /// family so it reads distinctly from the surrounding prose.
+    Code,
     /// Override the foreground colour for this range — used by the
     /// code-block syntax highlighter so that keywords/strings/comments
     /// can be tinted independently of the body text colour.
@@ -221,6 +224,7 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                     "strong" => Some(InlineProp::Bold),
                     "em" => Some(InlineProp::Italic),
                     "s" | "strikethrough" => Some(InlineProp::Strikethrough),
+                    "code" => Some(InlineProp::Code),
                     "softbreak" => {
                         // CommonMark soft break (a single newline
                         // within a paragraph). Emit a space so words

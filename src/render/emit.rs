@@ -199,6 +199,14 @@ fn emit_block(
                     slice.skip_y,
                     &slice.links,
                 );
+                draw_strikethroughs(
+                    surface,
+                    &slice.layout,
+                    slice.x,
+                    y,
+                    slice.line_range.clone(),
+                    slice.skip_y,
+                );
                 let kind: TagKind = if let Some(entry) = &block.outline {
                     heading_tag_kind(entry.level, &entry.text)
                 } else if matches!(block.tag_role, Some(super::block::TagRole::Note)) {
@@ -267,6 +275,14 @@ fn emit_block(
                     slice.x,
                     y,
                     font_cache,
+                    slice.line_range.clone(),
+                    slice.skip_y,
+                );
+                draw_strikethroughs(
+                    surface,
+                    &slice.layout,
+                    slice.x,
+                    y,
                     slice.line_range.clone(),
                     slice.skip_y,
                 );
@@ -1032,5 +1048,93 @@ fn draw_link_underlines(
         // Same hygiene as elsewhere — keep the surface stroke clear
         // so subsequent text emits stay on rendering-mode 0.
         surface.set_stroke(None);
+    }
+}
+
+/// Stroke a horizontal line `[x0, x1]` at `y`. Shared by the
+/// strikethrough pass; clears the surface stroke afterwards.
+fn stroke_hline(
+    surface: &mut krilla::surface::Surface<'_>,
+    x0: f32,
+    x1: f32,
+    y: f32,
+    thickness: f32,
+    color: rgb::Color,
+) {
+    if x1 <= x0 {
+        return;
+    }
+    let mut pb = PathBuilder::new();
+    pb.move_to(x0, y);
+    pb.line_to(x1, y);
+    if let Some(path) = pb.finish() {
+        surface.set_stroke(Some(Stroke {
+            paint: color.into(),
+            width: thickness,
+            opacity: NormalizedF32::ONE,
+            ..Default::default()
+        }));
+        surface.draw_path(&path);
+        surface.set_stroke(None);
+    }
+}
+
+/// Paint strikethrough decorations. parley records `Strikethrough(true)`
+/// on a run's resolved style, but this krilla bridge draws only glyphs —
+/// so the line is painted here in a separate pass over the same layout,
+/// mirroring [`draw_link_underlines`]. Position and thickness come from
+/// the run's font metrics; the colour matches the struck text. Each
+/// contiguous struck span on a line becomes one stroke.
+fn draw_strikethroughs(
+    surface: &mut krilla::surface::Surface<'_>,
+    layout: &Layout<rgb::Color>,
+    origin_x: f32,
+    origin_y_top: f32,
+    line_range: std::ops::Range<usize>,
+    skip_y: f32,
+) {
+    for (i, line) in layout.lines().enumerate() {
+        if i < line_range.start {
+            continue;
+        }
+        if i >= line_range.end {
+            break;
+        }
+        let baseline = origin_y_top - skip_y + line.metrics().baseline;
+        let mut x = origin_x + line.metrics().offset;
+        // Open struck span: (x0, x1, strike_y, thickness, colour).
+        let mut span: Option<(f32, f32, f32, f32, rgb::Color)> = None;
+        for run in line.runs() {
+            let rm = run.metrics();
+            let strike_off = rm.strikethrough_offset;
+            let thickness = rm.strikethrough_size.max(0.5);
+            for cluster in run.visual_clusters() {
+                if cluster.is_ligature_continuation() {
+                    if let Some(s) = span.as_mut() {
+                        s.1 = x;
+                    }
+                    continue;
+                }
+                let advance = cluster.advance();
+                let style_idx = cluster.glyphs().next().map(|g| g.style_index as usize);
+                let struck = style_idx
+                    .map(|idx| layout.styles()[idx].strikethrough.is_some())
+                    .unwrap_or(false);
+                if struck {
+                    let color = layout.styles()[style_idx.unwrap()].brush;
+                    let strike_y = baseline - strike_off;
+                    match span.as_mut() {
+                        Some(s) => s.1 = x + advance,
+                        None => span = Some((x, x + advance, strike_y, thickness, color)),
+                    }
+                } else if let Some((x0, x1, y, t, c)) = span.take() {
+                    stroke_hline(surface, x0, x1, y, t, c);
+                }
+                x += advance;
+            }
+        }
+        if let Some((x0, x1, y, t, c)) = span.take() {
+            stroke_hline(surface, x0, x1, y, t, c);
+        }
     }
 }

@@ -7,7 +7,7 @@
 use clap::Parser;
 use flux_types::FluxFrontmatter;
 use markdoc::{
-    Context, evaluate_conditionals, parse,
+    Context, evaluate_conditionals, parse_with_variables,
     partials::{FsPartialResolver, expand_partials},
     resolve_crossrefs, transform_with_context,
     types::{Config, Scalar},
@@ -53,6 +53,12 @@ struct Args {
     /// document with media siblings.
     #[arg(long, value_name = "DIR")]
     assets_root: Option<PathBuf>,
+
+    /// Build-time variable, repeatable: `--var key=value`. Exposed to the
+    /// document as `$key` in `{% … %}` interpolation, `{% if %}` conditions,
+    /// and tag attributes. The value is always treated as a string.
+    #[arg(long = "var", value_name = "KEY=VALUE")]
+    var: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -101,11 +107,24 @@ fn run(args: &Args) -> Result<(), AppError> {
         None => Style::default(),
     };
 
+    // ── Collect CLI `--var key=value` build-time variables. ────────
+    let mut cli_vars: HashMap<String, Scalar> = HashMap::new();
+    for pair in &args.var {
+        match pair.split_once('=') {
+            Some((k, v)) => {
+                cli_vars.insert(k.trim().to_string(), Scalar::String(v.to_string()));
+            }
+            None => eprintln!(
+                "warning: ignoring --var {pair:?} (expected key=value, e.g. --var version=3.2)"
+            ),
+        }
+    }
+
     // ── Read + parse the source. ───────────────────────────────────
     let source =
         fs::read_to_string(&args.input).map_err(|e| AppError::Read(args.input.clone(), e))?;
-    let doc =
-        parse(&source, None).map_err(|e| AppError::Parse(args.input.clone(), e.to_string()))?;
+    let doc = parse_with_variables(&source, None, &cli_vars)
+        .map_err(|e| AppError::Parse(args.input.clone(), e.to_string()))?;
 
     // Expand `{% partial file="..." /%}` references against the input
     // file's parent directory. Partials' own `{% partial %}` tags are
@@ -120,7 +139,12 @@ fn run(args: &Args) -> Result<(), AppError> {
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
 
     let doc = resolve_crossrefs(&doc);
-    let ctx = Context::new();
+    // Build-time `--var` values are exposed as top-level `$key` for
+    // conditionals and tag attributes (parse-time text interpolation got
+    // them via `parse_with_variables` above).
+    let ctx = cli_vars.iter().fold(Context::new(), |c, (k, v)| {
+        c.with_variable(k.clone(), v.clone())
+    });
     let doc = evaluate_conditionals(&doc, &ctx)
         .map_err(|e| AppError::Conditionals(args.input.clone(), e.to_string()))?;
     let rendered = transform_with_context(&doc, &Config::default(), &ctx)
@@ -293,7 +317,7 @@ impl AppError {
                 "partial paths are resolved against the input file's directory; check spelling and that the file exists.".into(),
             ],
             AppError::Conditionals(_, _) => vec![
-                "{% if expr %} branches must reference variables defined in frontmatter or via Context.".into(),
+                "{% if expr %} branches must reference variables defined in frontmatter, via --var, or via Context.".into(),
             ],
             AppError::Transform(_, _) => vec![
                 "transform errors usually mean a tag failed schema validation — check the spelling and required attributes.".into(),

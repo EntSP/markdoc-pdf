@@ -1,0 +1,82 @@
+---
+title: Text wrapping with float
+---
+
+# Wrapping content around an image
+
+The `\{% float %}` container places an image on one side and flows the
+following content around it. Unlike `\{% columns %}`, which lays out
+independent side-by-side lanes, a float is a single flow: each block hugs
+the image's near edge while it overlaps, then spans the full column once it
+clears the image's bottom edge. The whole construct stays on one page — if
+it will not fit, it moves to the next.
+
+## Left float, with rich content
+
+The wrap keeps its real structure — a paragraph reflows around the image,
+but lists stay lists, code blocks stay code, and callouts stay callouts.
+
+{% float width=170 %}
+![](figure.svg)
+
+A floated image sits on the chosen side while the content that follows it
+wraps into the remaining width. This opening paragraph is narrow — every
+line is shortened and shifted to clear the figure{% footnote %}Footnotes
+raised inside a float are collected and numbered like any other, then
+printed in the page's footnote pool.{% /footnote %} — then widens to the
+full measure the moment it passes the image's bottom edge.
+
+Structure survives the wrap rather than collapsing to plain prose:
+
+* bullet lists stay lists,
+* `inline code` keeps its monospace,
+* and the markers are real.
+
+{% callout type="info" %}
+Callouts render beside the figure with their box, accent stripe and label
+intact — not flattened into a paragraph.
+{% /callout %}
+{% /float %}
+
+## Right float, wider image
+
+{% float side="right" width=200 %}
+![](figure.svg)
+
+Set `side="right"` to move the image to the outer edge and wrap the content
+down its left-hand side. The `width` attribute takes a fraction of the
+column (a value up to 1), an explicit point value like this one, or a
+percentage string such as `"45%"`.
+
+The image never scales up beyond its natural size, matching how every other
+image in the renderer behaves, so a small raster stays small and only a
+vector or a large photo will fill the requested width.
+{% /float %}
+
+Ordinary full-width paragraphs resume here, clear of any float, so the
+section ends on the normal measure.
+
+## Multiple anchored floats (magazine)
+
+Give each `\{% media %}` an explicit `side` and drop it *inline*, at the point
+in the prose where it should anchor. The whole region becomes one continuous
+text stream that wraps around every float — narrowing on the left past a
+`side="left"` image, on the right before a `side="right"` one, and into the
+channel between them where they overlap vertically. Full-width text returns
+wherever no float is in the way.
+
+{% float %}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer cursus
+interdum {% media src="figure.svg" side="left" width=110 /%} dui, in gravida
+ligula aliquam in. Vivamus vitae metus pharetra, ultricies metus quis,
+consectetur augue. Phasellus ac mauris et nisi pretium aliquet sed ac orci.
+Ut mi ipsum, mollis sed placerat et, bibendum et velit. Nunc vitae ornare leo.
+Aliquam turpis sem, varius eget neque vel, mattis ultricies ex. Fusce metus
+mauris {% media src="figure.svg" side="right" width=110 /%} fermentum at
+porttitor quis, malesuada sed elit. Integer vel eros congue, volutpat nunc in,
+lobortis ante. Curabitur pretium tincidunt lacus, nec ornare nisl. Trailing
+text so the wrap closes back to the full measure once both figures clear.
+{% /float %}
+
+Prose-only: rich blocks between the floats are flattened to paragraphs — for
+structured content beside a single image use the leading-image form above.

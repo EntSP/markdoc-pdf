@@ -701,6 +701,28 @@ fn walk_anchors(
                     row_top += row.height + *border_thickness;
                 }
             }
+            block::BlockDraw::Float { image, wrap } => {
+                // Image and wrap both stack from the float's top; the wrap
+                // slice advances y internally per block, matching emit.
+                walk_anchors(std::slice::from_ref(image.as_ref()), page_idx, y, map);
+                walk_anchors(wrap, page_idx, y, map);
+            }
+            block::BlockDraw::FloatRegion { text, floats } => {
+                // Mid-paragraph anchors resolve within the prose slice; each
+                // floated image resolves at its own offset below the top.
+                for anchor in text.mid_anchors.iter() {
+                    if let Some(dy) = mid_anchor_y_in_slice(text, anchor.byte_offset) {
+                        map.entry(anchor.id.clone())
+                            .or_insert((page_idx, y + dy));
+                    }
+                }
+                for fl in floats {
+                    if let Some(id) = &fl.image.anchor_id {
+                        map.entry(id.clone())
+                            .or_insert((page_idx, y + fl.y_offset));
+                    }
+                }
+            }
             _ => {}
         }
         y += block.height + block.space_after;
@@ -1078,6 +1100,16 @@ fn walk_for_figures(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Figu
                     }
                 }
             }
+            block::BlockDraw::Float { image, wrap } => {
+                // The floated image is a figure; the wrap may hold more.
+                walk_for_figures(std::slice::from_ref(image.as_ref()), page_idx, out);
+                walk_for_figures(wrap, page_idx, out);
+            }
+            block::BlockDraw::FloatRegion { floats, .. } => {
+                for fl in floats {
+                    walk_for_figures(std::slice::from_ref(fl.image.as_ref()), page_idx, out);
+                }
+            }
             _ => {}
         }
     }
@@ -1108,6 +1140,9 @@ fn walk_for_tables(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Table
             }
             block::BlockDraw::ListItem { body, .. } => {
                 walk_for_tables(body, page_idx, out);
+            }
+            block::BlockDraw::Float { wrap, .. } => {
+                walk_for_tables(wrap, page_idx, out);
             }
             _ => {}
         }
@@ -1147,6 +1182,9 @@ fn walk_for_headings(blocks: &[block::Block], page_idx: usize, out: &mut Vec<Hea
                         walk_for_headings(&cell.blocks, page_idx, out);
                     }
                 }
+            }
+            block::BlockDraw::Float { wrap, .. } => {
+                walk_for_headings(wrap, page_idx, out);
             }
             _ => {}
         }

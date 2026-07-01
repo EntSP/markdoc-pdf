@@ -182,113 +182,17 @@ fn emit_block(
 ) {
     match &block.draw {
         BlockDraw::Text(slice) => {
-            if tags.enabled {
-                // Tagged path: split content into per-link segments so
-                // each link's text can sit inside its own `Link` tag
-                // group alongside the corresponding annotation. Plain
-                // segments collect into one `P`/`Hn` group; link
-                // segments are paired with annotations later in mod.rs.
-                let segments = emit_layout_segmented(
-                    surface,
-                    &slice.layout,
-                    &slice.text,
-                    slice.x,
-                    y,
-                    font_cache,
-                    slice.line_range.clone(),
-                    slice.skip_y,
-                    &slice.links,
-                );
-                draw_decorations(
-                    surface,
-                    &slice.layout,
-                    slice.x,
-                    y,
-                    slice.line_range.clone(),
-                    slice.skip_y,
-                );
-                let kind: TagKind = if let Some(entry) = &block.outline {
-                    heading_tag_kind(entry.level, &entry.text)
-                } else if matches!(block.tag_role, Some(super::block::TagRole::Note)) {
-                    TagKind::Note(Tag::<kind::Note>::Note)
-                } else {
-                    TagKind::P(Tag::<kind::P>::P)
-                };
-                let mut group = TagGroup::new(kind);
-                for seg in &segments {
-                    if seg.link_idx_in_block.is_none() {
-                        group.push(seg.id);
-                    }
-                }
-                tags.push_leaf(group.into());
-
-                // One DeferredLink per link, holding all per-line rects
-                // and matching segment Identifiers. Multi-line wrapped
-                // links collapse into a single annotation with
-                // quad_points and a single Link tag group downstream.
-                for (lidx, lr) in slice.links.iter().enumerate() {
-                    let mut line_rects = Vec::new();
-                    collect_link_rects_per_line(
-                        &slice.layout,
-                        slice.x,
-                        y,
-                        lr,
-                        &mut line_rects,
-                        slice.line_range.clone(),
-                        slice.skip_y,
-                    );
-                    if line_rects.is_empty() {
-                        continue;
-                    }
-                    let mut text_ids = Vec::with_capacity(line_rects.len());
-                    let mut rects = Vec::with_capacity(line_rects.len());
-                    for (line_idx, rect) in line_rects {
-                        if let Some(seg) = segments
-                            .iter()
-                            .find(|s| s.link_idx_in_block == Some(lidx) && s.line_idx == line_idx)
-                        {
-                            text_ids.push(seg.id);
-                        }
-                        rects.push(rect);
-                    }
-                    links.push(DeferredLink {
-                        rects,
-                        href: lr.href.clone(),
-                        alt: lr.title.clone(),
-                        text_segment_ids: text_ids,
-                    });
-                }
+            // Structure-tree tag for this paragraph: a heading maps to
+            // `H1`–`H6`, a note callout body to `Note`, everything else to
+            // `P`. Computed here so the untagged path pays nothing.
+            let kind: TagKind = if let Some(entry) = &block.outline {
+                heading_tag_kind(entry.level, &entry.text)
+            } else if matches!(block.tag_role, Some(super::block::TagRole::Note)) {
+                TagKind::Note(Tag::<kind::Note>::Note)
             } else {
-                emit_layout(
-                    surface,
-                    &slice.layout,
-                    &slice.text,
-                    slice.x,
-                    y,
-                    font_cache,
-                    slice.line_range.clone(),
-                    slice.skip_y,
-                );
-                draw_decorations(
-                    surface,
-                    &slice.layout,
-                    slice.x,
-                    y,
-                    slice.line_range.clone(),
-                    slice.skip_y,
-                );
-                for lr in slice.links.iter() {
-                    collect_link_rects(
-                        &slice.layout,
-                        slice.x,
-                        y,
-                        lr,
-                        links,
-                        slice.line_range.clone(),
-                        slice.skip_y,
-                    );
-                }
-            }
+                TagKind::P(Tag::<kind::P>::P)
+            };
+            emit_text_slice(surface, slice, y, font_cache, links, tags, kind);
         }
 
         BlockDraw::Image {
@@ -794,6 +698,164 @@ fn emit_block(
                 surface.set_stroke(None);
             }
         }
+
+        BlockDraw::Float { image, wrap } => {
+            // Draw the floated image first (its `x` was placed on the chosen
+            // side at layout time), then stack the wrap blocks from the same
+            // top `y`. Each wrap block already carries the x / width it was
+            // laid out at (narrow + shifted while beside the image, full
+            // column once clear), and `emit_blocks` advances y by the same
+            // cumulative heights the layout pass used — so image and wrap
+            // overlap exactly as intended.
+            emit_block(surface, image, y, font_cache, links, outline, tags);
+            emit_blocks(surface, wrap, y, font_cache, links, outline, tags);
+        }
+
+        BlockDraw::FloatRegion { text, floats } => {
+            // Draw each floated image at its resolved position, then the one
+            // prose slice at the region top. The slice's lines already carry
+            // their per-line origin / measure (narrowed around whichever
+            // floats they overlap), so a plain text-slice emit places them
+            // correctly beside and below the images.
+            for fl in floats {
+                emit_block(
+                    surface,
+                    &fl.image,
+                    y + fl.y_offset,
+                    font_cache,
+                    links,
+                    outline,
+                    tags,
+                );
+            }
+            emit_text_slice(
+                surface,
+                text,
+                y,
+                font_cache,
+                links,
+                tags,
+                TagKind::P(Tag::<kind::P>::P),
+            );
+        }
+    }
+}
+
+/// Emit one laid-out text slice: draw its glyphs, its decorations
+/// (underline / strikethrough), and register its links — honouring
+/// per-line origins so a `{% float %}` wrap renders the same as an
+/// ordinary paragraph. `kind` is the structure-tree group the plain
+/// (non-link) segments join under (`P`, `Hn`, `Note`). Shared by the
+/// `Text` and `Float` arms of [`emit_block`].
+#[allow(clippy::too_many_arguments)]
+fn emit_text_slice(
+    surface: &mut krilla::surface::Surface<'_>,
+    slice: &super::block::TextSlice,
+    y: f32,
+    font_cache: &mut HashMap<u64, Font>,
+    links: &mut Vec<DeferredLink>,
+    tags: &mut TagAccumulator,
+    kind: TagKind,
+) {
+    if tags.enabled {
+        // Tagged path: split content into per-link segments so each link's
+        // text can sit inside its own `Link` tag group alongside the
+        // corresponding annotation. Plain segments collect into one
+        // `P`/`Hn`/`Note` group; link segments are paired with annotations
+        // later in mod.rs.
+        let segments = emit_layout_segmented(
+            surface,
+            &slice.layout,
+            &slice.text,
+            slice.x,
+            y,
+            font_cache,
+            slice.line_range.clone(),
+            slice.skip_y,
+            &slice.links,
+        );
+        draw_decorations(
+            surface,
+            &slice.layout,
+            slice.x,
+            y,
+            slice.line_range.clone(),
+            slice.skip_y,
+        );
+        let mut group = TagGroup::new(kind);
+        for seg in &segments {
+            if seg.link_idx_in_block.is_none() {
+                group.push(seg.id);
+            }
+        }
+        tags.push_leaf(group.into());
+
+        // One DeferredLink per link, holding all per-line rects and matching
+        // segment Identifiers. Multi-line wrapped links collapse into a
+        // single annotation with quad_points and a single Link tag group
+        // downstream.
+        for (lidx, lr) in slice.links.iter().enumerate() {
+            let mut line_rects = Vec::new();
+            collect_link_rects_per_line(
+                &slice.layout,
+                slice.x,
+                y,
+                lr,
+                &mut line_rects,
+                slice.line_range.clone(),
+                slice.skip_y,
+            );
+            if line_rects.is_empty() {
+                continue;
+            }
+            let mut text_ids = Vec::with_capacity(line_rects.len());
+            let mut rects = Vec::with_capacity(line_rects.len());
+            for (line_idx, rect) in line_rects {
+                if let Some(seg) = segments
+                    .iter()
+                    .find(|s| s.link_idx_in_block == Some(lidx) && s.line_idx == line_idx)
+                {
+                    text_ids.push(seg.id);
+                }
+                rects.push(rect);
+            }
+            links.push(DeferredLink {
+                rects,
+                href: lr.href.clone(),
+                alt: lr.title.clone(),
+                text_segment_ids: text_ids,
+            });
+        }
+    } else {
+        emit_layout(
+            surface,
+            &slice.layout,
+            &slice.text,
+            slice.x,
+            y,
+            font_cache,
+            slice.line_range.clone(),
+            slice.skip_y,
+        );
+        draw_decorations(
+            surface,
+            &slice.layout,
+            slice.x,
+            y,
+            slice.line_range.clone(),
+            slice.skip_y,
+        );
+        for lr in slice.links.iter() {
+            collect_link_rects(
+                &slice.layout,
+                slice.x,
+                y,
+                lr,
+                links,
+                slice.line_range.clone(),
+                slice.skip_y,
+            );
+        }
     }
 }
 
@@ -927,7 +989,10 @@ fn collect_link_rects_per_line(
         let line_top = baseline - metrics.ascent;
         let line_height = metrics.ascent + metrics.descent;
 
-        let mut x = origin_x;
+        // Include the alignment offset and the per-line origin
+        // (`inline_min_coord`, set by `{% float %}`) so link rects track
+        // shifted lines. Both are 0 for ordinary left-aligned paragraphs.
+        let mut x = origin_x + metrics.offset + metrics.inline_min_coord;
         let mut link_min_x: Option<f32> = None;
         let mut link_max_x: f32 = origin_x;
 
@@ -1047,7 +1112,7 @@ fn draw_decorations(
             break;
         }
         let baseline = origin_y_top - skip_y + line.metrics().baseline;
-        let mut x = origin_x + line.metrics().offset;
+        let mut x = origin_x + line.metrics().offset + line.metrics().inline_min_coord;
         // One running span per decoration kind: (x0, x1, y, thickness, colour).
         let mut underline: Option<(f32, f32, f32, f32, rgb::Color)> = None;
         let mut strike: Option<(f32, f32, f32, f32, rgb::Color)> = None;

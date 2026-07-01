@@ -10,11 +10,11 @@ use krilla::num::NormalizedF32;
 use krilla::paint::Fill;
 use krilla::tagging::{ContentTag, Identifier, SpanTag};
 use krilla::text::{Font, GlyphId, KrillaGlyph};
-use parley::layout::Alignment;
+use parley::layout::{Alignment, YieldData};
 use parley::style::{
     FontFamily, FontFamilyName, FontStyle, FontWeight, LineHeight, OverflowWrap, StyleProperty,
 };
-use parley::{FontContext, Layout, LayoutContext};
+use parley::{FontContext, InlineBox, InlineBoxKind, Layout, LayoutContext};
 
 use super::inline::{InlineProp, InlineRange, LinkRange};
 
@@ -91,6 +91,24 @@ pub fn build_layout(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<rgb::Color>,
 ) -> Layout<rgb::Color> {
+    let mut layout = build_unbroken(text, ranges, style, &[], font_cx, layout_cx);
+    layout.break_all_lines(Some(max_advance));
+    layout.align(Alignment::Start, Default::default());
+    layout
+}
+
+/// Shared setup for the `build_layout*` family: apply the default text style
+/// and the inline ranges, push any inline `boxes` (used by anchored floats as
+/// zero-size `CustomOutOfFlow` markers), then build the layout *without*
+/// line-breaking it. Callers choose how to break.
+fn build_unbroken(
+    text: &str,
+    ranges: &[InlineRange],
+    style: &TextStyle<'_>,
+    boxes: &[InlineBox],
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<rgb::Color>,
+) -> Layout<rgb::Color> {
     let families: Vec<FontFamilyName<'static>> = style
         .font_families
         .iter()
@@ -158,10 +176,207 @@ pub fn build_layout(
         }
     }
 
-    let mut layout = builder.build(text);
-    layout.break_all_lines(Some(max_advance));
-    layout.align(Alignment::Start, Default::default());
+    for b in boxes {
+        builder.push_inline_box(b.clone());
+    }
+
+    builder.build(text)
+}
+
+/// Like [`build_layout`], but breaks lines to flow around a rectangular
+/// exclusion at the top of the column (a floated image). While a line's top
+/// is above `exclude_height` it is limited to `narrow_width` and shifted to
+/// `narrow_x`; once clear of the exclusion, lines use the full `full_width`
+/// at x = 0. Each line's chosen `x` lands in its `metrics().inline_min_coord`
+/// (parley's per-line origin, distinct from the alignment `offset`); the emit
+/// pass adds both to the block origin. This is the wrap-around-image mechanism
+/// for `{% float %}`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_layout_float(
+    text: &str,
+    ranges: &[InlineRange],
+    style: &TextStyle<'_>,
+    full_width: f32,
+    narrow_width: f32,
+    narrow_x: f32,
+    exclude_height: f32,
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<rgb::Color>,
+) -> Layout<rgb::Color> {
+    let mut layout = build_unbroken(text, ranges, style, &[], font_cx, layout_cx);
+    let mut breaker = layout.break_lines();
+    // Line widths vary, so the uniform layout max-advance must be unset
+    // (parley asserts per-line width matches it otherwise). The per-line
+    // origin (`line_x`) and width (`line_max_advance`) live on the breaker
+    // state, reached via `state_mut()`.
+    breaker.state_mut().set_layout_max_advance(f32::INFINITY);
+    loop {
+        // `committed_y()` is the top of the line about to be laid, so decide
+        // narrow-vs-full from it before breaking that line.
+        let past_image = breaker.committed_y() as f32 >= exclude_height;
+        let st = breaker.state_mut();
+        if past_image {
+            st.set_line_x(0.0);
+            st.set_line_max_advance(full_width);
+        } else {
+            st.set_line_x(narrow_x);
+            st.set_line_max_advance(narrow_width);
+        }
+        if breaker.break_next().is_none() {
+            break;
+        }
+    }
+    breaker.finish();
     layout
+}
+
+/// One anchored float for [`build_layout_float_anchored`]: an image pulled to
+/// `side_right ? right : left` at the byte `offset` in the text, of the given
+/// `width`/`height`. The image occupies no inline space; the surrounding
+/// prose narrows on its side for the band it covers.
+#[derive(Clone, Copy)]
+pub struct FloatSpec {
+    pub offset: usize,
+    pub side_right: bool,
+    pub width: f32,
+    pub height: f32,
+}
+
+/// One placed float, returned by [`build_layout_float_anchored`] in the same
+/// order as the input specs: the image's `x` (relative to the text column's
+/// left) and `y` (relative to the layout top).
+#[derive(Clone, Copy)]
+pub struct FloatPlacement {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Lay out prose that flows around several anchored floats — the multi-image
+/// `{% float %}` (a `float:left` up high, a `float:right` lower down, …). Each
+/// spec is pushed as a zero-size `CustomOutOfFlow` inline box at its byte
+/// offset; parley yields when the flow reaches one, and this loop drops the
+/// float at the *next* line boundary (so image and wrapped text start on the
+/// same line), then narrows every following line by whichever floats are still
+/// active at its height — on the left (`set_line_x`), the right (reduced
+/// `set_line_max_advance`), or both. Returns the laid-out layout and each
+/// float's resolved position.
+#[allow(clippy::too_many_arguments)]
+pub fn build_layout_float_anchored(
+    text: &str,
+    ranges: &[InlineRange],
+    style: &TextStyle<'_>,
+    full_width: f32,
+    gap: f32,
+    specs: &[FloatSpec],
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<rgb::Color>,
+) -> (Layout<rgb::Color>, Vec<FloatPlacement>) {
+    // Smallest text measure we allow between floats; below this the line would
+    // be unreadable, so we clamp (the layout caller also guards up front).
+    let min_advance = (style.font_size * 3.0).max(24.0);
+
+    let boxes: Vec<InlineBox> = specs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| InlineBox {
+            id: i as u64,
+            kind: InlineBoxKind::CustomOutOfFlow,
+            index: s.offset,
+            width: 0.0,
+            height: 0.0,
+        })
+        .collect();
+
+    let mut layout = build_unbroken(text, ranges, style, &boxes, font_cx, layout_cx);
+    let mut placements = vec![FloatPlacement { x: 0.0, y: 0.0 }; specs.len()];
+
+    // Floats currently occupying vertical space: (is-right, bottom_y, width+gap).
+    let mut active: Vec<(bool, f32, f32)> = Vec::new();
+    // Floats whose anchor was reached on the current line, awaiting the next
+    // line boundary before they drop (so they don't overlap the anchor line).
+    let mut pending: Vec<usize> = Vec::new();
+
+    let mut breaker = layout.break_lines();
+    breaker.state_mut().set_layout_max_advance(f32::INFINITY);
+    loop {
+        // Set this line's measure from the floats active at its top: shift
+        // right past any left float (`set_line_x`) and shorten for any right
+        // float (reduced `set_line_max_advance`).
+        let y = breaker.committed_y() as f32;
+        active.retain(|f| f.1 > y + 0.5);
+        let left = active
+            .iter()
+            .filter(|f| !f.0)
+            .map(|f| f.2)
+            .fold(0.0_f32, f32::max);
+        let right = active
+            .iter()
+            .filter(|f| f.0)
+            .map(|f| f.2)
+            .fold(0.0_f32, f32::max);
+        let advance = (full_width - left - right).max(min_advance);
+        {
+            let st = breaker.state_mut();
+            st.set_line_x(left);
+            st.set_line_max_advance(advance);
+        }
+
+        match breaker.break_next() {
+            None => break,
+            Some(YieldData::InlineBoxBreak(bd)) => {
+                // Reached a float anchor: remember it, then step past the
+                // zero-size box without consuming inline space (advance
+                // unchanged). Geometry is unchanged, so re-setting it above on
+                // the next iteration is a no-op until the float actually drops.
+                pending.push(bd.inline_box_id as usize);
+                breaker
+                    .state_mut()
+                    .append_inline_box_to_line(bd.advance, 0.0);
+            }
+            Some(_) => {
+                // A line was committed; drop any floats anchored on it at the
+                // now-current (next line's) top.
+                let ny = breaker.committed_y() as f32;
+                for i in pending.drain(..) {
+                    let s = specs[i];
+                    // Stack below any float already occupying the same side.
+                    let top = active
+                        .iter()
+                        .filter(|f| f.0 == s.side_right)
+                        .map(|f| f.1)
+                        .fold(ny, f32::max);
+                    let x = if s.side_right {
+                        full_width - s.width
+                    } else {
+                        0.0
+                    };
+                    placements[i] = FloatPlacement { x, y: top };
+                    active.push((s.side_right, top + s.height, s.width + gap));
+                }
+            }
+        }
+    }
+    // Floats anchored on the last line (no trailing line break) drop at the
+    // final y so they still render below the text.
+    let ny = breaker.committed_y() as f32;
+    for i in pending.drain(..) {
+        let s = specs[i];
+        let top = active
+            .iter()
+            .filter(|f| f.0 == s.side_right)
+            .map(|f| f.1)
+            .fold(ny, f32::max);
+        let x = if s.side_right {
+            full_width - s.width
+        } else {
+            0.0
+        };
+        placements[i] = FloatPlacement { x, y: top };
+        active.push((s.side_right, top + s.height, s.width + gap));
+    }
+    breaker.finish();
+
+    (layout, placements)
 }
 
 /// Like [`build_layout`] but with a caller-chosen text alignment.
@@ -192,7 +407,9 @@ pub fn build_layout_aligned(
 /// Each line's per-line `metrics().offset` is honoured — parley sets
 /// this when `Alignment::Center` or `Alignment::End` is used so
 /// individual lines start at the right x within the layout's advance
-/// width. For default `Alignment::Start` text the offset is 0.
+/// width. For default `Alignment::Start` text the offset is 0. The
+/// line's `inline_min_coord` (its per-line origin, set by `{% float %}`
+/// via `set_line_x`) is added too; it is 0 for ordinary paragraphs.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_layout(
     surface: &mut krilla::surface::Surface<'_>,
@@ -212,7 +429,7 @@ pub fn emit_layout(
             break;
         }
         let baseline_y = origin_y_top - skip_y + line.metrics().baseline;
-        let mut x = origin_x + line.metrics().offset;
+        let mut x = origin_x + line.metrics().offset + line.metrics().inline_min_coord;
 
         for run in line.runs() {
             let mut cur_x = x;
@@ -335,7 +552,7 @@ pub fn emit_layout_segmented(
             break;
         }
         let baseline_y = origin_y_top - skip_y + line.metrics().baseline;
-        let mut x = origin_x + line.metrics().offset;
+        let mut x = origin_x + line.metrics().offset + line.metrics().inline_min_coord;
 
         for run in line.runs() {
             let mut cur_x = x;

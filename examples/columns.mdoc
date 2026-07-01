@@ -55,3 +55,22 @@ style to colour every caption):
 
   ![](swatch.svg)
 {% /columns %}
+
+## Text flanking a centred image — widths="2 1 2"
+
+A wide outer pair of text lanes around a narrow image lane centres a figure
+with commentary on either side. Each lane is its own stream, so the two
+sides are independent (they can differ), and — like any columns — they keep
+their width for the whole row rather than reflowing below the image. For
+text that wraps down *one* side of an image and then widens beneath it, use
+`\{% float %}` instead.
+
+{% columns widths="2 1 2" gap=18 %}
+* Left-hand text runs down this side of the figure. It is its own lane,
+  independent of the text on the right, so neither side crosses the image
+  and neither widens below it.
+* ![](figure.svg)
+* Right-hand text runs down the other side. Because each lane is its own
+  stream, the two sides can carry different commentary at once — a figure
+  annotated on the left and the right at the same time.
+{% /columns %}

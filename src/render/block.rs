@@ -19,7 +19,8 @@ use super::style::MarkerSequence;
 use super::style::Style;
 use super::style::TableColumnSizing;
 use super::text::{
-    TextStyle, build_layout, build_layout_aligned, measure_first_line_width, monospace_families,
+    FloatSpec, TextStyle, build_layout, build_layout_aligned, build_layout_float,
+    build_layout_float_anchored, measure_first_line_width, monospace_families,
 };
 
 /// One unit of paginatable content.
@@ -97,6 +98,13 @@ impl Block {
                     c.collect_footnote_numbers(out);
                 }
             }
+            BlockDraw::Float { image, wrap } => {
+                image.collect_footnote_numbers(out);
+                for c in wrap {
+                    c.collect_footnote_numbers(out);
+                }
+            }
+            BlockDraw::FloatRegion { text, .. } => out.extend(text.footnote_numbers()),
             // Tables, images, SVG, rules carry no footnote calls in v1.
             _ => {}
         }
@@ -657,6 +665,39 @@ pub enum BlockDraw {
         edge: Option<(rgb::Color, f32)>,
         caption: Option<String>,
     },
+    /// A floated image with content wrapping beside then below it — the
+    /// `{% float %}` construct. `image` is a fully-positioned `Image`/`Svg`
+    /// block (its `x` already placed on the chosen side); `wrap` is the
+    /// following content as ordinary blocks, each laid out at the width
+    /// available at its vertical position — narrowed and shifted while it
+    /// overlaps the image, full-column once past it. Paragraphs that
+    /// straddle the image's bottom edge reflow (narrow lines then full).
+    /// The wrap keeps its real structure (lists, code, callouts, tables,
+    /// nested figures) and its footnotes / anchors. The whole float is one
+    /// indivisible pagination unit — it never straddles a page break (if it
+    /// doesn't fit, it moves to the next page); `wrap` blocks stack from the
+    /// float's top exactly as [`emit_blocks`](super::emit::emit_blocks) lays
+    /// them, so the layout-time and emit-time y agree.
+    Float { image: Box<Block>, wrap: Vec<Block> },
+    /// A prose region flowing around several anchored floats — the
+    /// multi-image `{% float %}` (a `float:left` up high, a `float:right`
+    /// lower down, …). `text` is the single laid-out prose stream (its lines
+    /// already narrowed / shifted per-line for whichever floats they overlap);
+    /// `floats` are the images, each with its resolved position. Like
+    /// [`Float`](Self::Float) it is one indivisible pagination unit.
+    FloatRegion {
+        text: TextSlice,
+        floats: Vec<FloatItem>,
+    },
+}
+
+/// One placed image inside a [`BlockDraw::FloatRegion`]: a fully-positioned
+/// `Image`/`Svg` block (its `x` already absolute) drawn at `y_offset` below
+/// the region's top.
+#[derive(Clone)]
+pub struct FloatItem {
+    pub image: Box<Block>,
+    pub y_offset: f32,
 }
 
 /// One laid-out table cell. Its content `blocks` already carry their `x`
@@ -1072,6 +1113,9 @@ fn layout_node(
 
         // `{% columns %}` — place children side by side in equal columns.
         "columns" => layout_columns(tag, x, width, ctx),
+
+        // `{% float %}` — an image on one side with prose wrapping around it.
+        "float" => layout_float(tag, x, width, ctx),
 
         "img" | "media" => layout_media(tag, x, width, ctx),
 
@@ -2754,6 +2798,584 @@ fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
         children: vec![tr],
     };
     layout_table(&table, x, width, ctx)
+}
+
+/// Return the inner `img`/`media` tag of `node`, whether it is that tag
+/// itself or a `<p>`/`<div>` wrapping one (pulldown-cmark wraps a bare
+/// image in a paragraph). Used by `{% float %}` to find the figure.
+fn find_media_tag(node: &RenderableTreeNode) -> Option<&Tag> {
+    if let RenderableTreeNode::Tag(t) = node {
+        if t.name == "img" || t.name == "media" {
+            return Some(t.as_ref());
+        }
+        if t.name == "p" || t.name == "div" {
+            return t.children.iter().find_map(find_media_tag);
+        }
+    }
+    None
+}
+
+/// Resolve a `{% float width=… %}` value to an image width in points,
+/// given the column width `col`. A number `≤ 1` (or a `"NN%"` string) is a
+/// fraction of the column; a number `> 1` is an explicit point value. The
+/// result is clamped so the image always leaves room for text. Default 40%.
+fn resolve_float_width(attr: Option<&Scalar>, col: f32) -> f32 {
+    let raw = match attr {
+        Some(Scalar::Number(v)) => {
+            let v = *v as f32;
+            if v <= 1.0 { col * v } else { v }
+        }
+        Some(Scalar::String(s)) => {
+            let s = s.trim();
+            if let Some(pct) = s.strip_suffix('%') {
+                pct.trim()
+                    .parse::<f32>()
+                    .ok()
+                    .map(|p| col * p / 100.0)
+                    .unwrap_or(col * 0.4)
+            } else {
+                match s.parse::<f32>() {
+                    Ok(v) if v <= 1.0 => col * v,
+                    Ok(v) => v,
+                    Err(_) => col * 0.4,
+                }
+            }
+        }
+        _ => col * 0.4,
+    };
+    raw.clamp(24.0, col * 0.8)
+}
+
+/// Is `node` a paragraph of purely inline content — a `<p>` with no
+/// block-level child to promote (`img` / `media` / `callout`)? Such a
+/// paragraph can be reflowed line-by-line around a float; anything else is
+/// laid out by the normal dispatch at the width available where it starts.
+fn is_plain_paragraph(node: &RenderableTreeNode) -> bool {
+    match node {
+        RenderableTreeNode::Tag(t) if t.name == "p" => !t.children.iter().any(|c| {
+            matches!(
+                c,
+                RenderableTreeNode::Tag(ct)
+                    if matches!(ct.name.as_str(), "img" | "media" | "callout")
+            )
+        }),
+        _ => false,
+    }
+}
+
+/// Lay out a plain paragraph that wraps around a float. Mirrors
+/// [`layout_paragraph`]'s inline collection, link styling and hyphenation,
+/// but breaks lines to hug the image: lines above `exclude_h` (measured from
+/// this paragraph's own top) use `narrow_w` shifted by `narrow_x`; lines
+/// below span `full_w` at the column-left origin `x`. Footnotes and
+/// mid-paragraph anchors inside it are preserved.
+#[allow(clippy::too_many_arguments)]
+fn layout_paragraph_float(
+    node: &RenderableTreeNode,
+    x: f32,
+    full_w: f32,
+    narrow_x: f32,
+    narrow_w: f32,
+    exclude_h: f32,
+    ctx: &mut LayoutCtx<'_>,
+) -> Vec<Block> {
+    let RenderableTreeNode::Tag(tag) = node else {
+        return Vec::new();
+    };
+    let mut inlines = Inlines::from(&tag.children, &mut ctx.footnotes);
+    if inlines.text.trim().is_empty() {
+        return Vec::new();
+    }
+    // Link text styling — identical to `layout_paragraph`.
+    let link_style = &ctx.style.link;
+    let link_color: krilla::color::rgb::Color = link_style.color.into();
+    for link in &inlines.links {
+        inlines.style_ranges.push(InlineRange {
+            start: link.start,
+            end: link.end,
+            prop: InlineProp::Color(link_color),
+        });
+        if link_style.italic {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Italic,
+            });
+        }
+        if link_style.bold {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Bold,
+            });
+        }
+    }
+    if link_style.underline {
+        for link in &inlines.links {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Underline {
+                    thickness: link_style.underline_thickness,
+                },
+            });
+        }
+    }
+    // Hyphenate only when nothing keys on byte offsets (same guard as
+    // `layout_paragraph`) — helps fill the narrow lines beside the image.
+    if let Some(h) = ctx.hyphenator
+        && inlines.style_ranges.is_empty()
+        && inlines.links.is_empty()
+        && inlines.mid_anchors.is_empty()
+        && inlines.footnote_calls.is_empty()
+    {
+        inlines.text = h.hyphenate(&inlines.text);
+    }
+    let style = TextStyle {
+        font_size: ctx.style.body_font_size,
+        font_weight: 400.0,
+        line_height: ctx.style.body_line_height,
+        color: ctx.style.text_color.into(),
+        font_families: ctx.body_families,
+        italic: false,
+    };
+    let layout = build_layout_float(
+        &inlines.text,
+        &inlines.style_ranges,
+        &style,
+        full_w,
+        narrow_w,
+        narrow_x,
+        exclude_h,
+        ctx.font_cx,
+        ctx.layout_cx,
+    );
+    let slice = TextSlice::whole_with_extras(
+        layout,
+        inlines.text,
+        inlines.links,
+        inlines.mid_anchors,
+        inlines.footnote_calls,
+        x,
+    );
+    let height = slice.height();
+    vec![Block {
+        height,
+        space_after: ctx.style.paragraph_space_after,
+        draw: BlockDraw::Text(slice),
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }]
+}
+
+/// `{% float %}` — place an image on one side (`side="left"|"right"`,
+/// default left) and wrap the following content around it. `width` sizes the
+/// image (a fraction `≤ 1` of the column, an explicit point value `> 1`, or
+/// a `"NN%"` string; default 40 %); `gap` is the space between image and
+/// content (points, default 14).
+///
+/// The wrap keeps its real block structure. Each block after the image is
+/// laid out at the width available where it starts: while it sits beside the
+/// image it is narrowed and shifted to clear the picture; once past the
+/// image's bottom edge it spans the full column. A plain paragraph that
+/// straddles the boundary reflows line-by-line (narrow, then full). Lists,
+/// code blocks, callouts, tables and nested figures render as themselves,
+/// and footnotes / anchors inside the wrap are preserved.
+///
+/// The whole float is one indivisible pagination unit — it never straddles a
+/// page break (if it doesn't fit, it moves to the next page). The image
+/// never upscales, so a small raster bounds the float width to its natural
+/// size (as everywhere else). For fully independent side-by-side lanes use
+/// `{% columns %}` instead.
+///
+/// When one or more images inside the region carry an explicit `side`
+/// attribute (`{% media src=… side="left" /%}`), this switches to the
+/// **anchored** mode ([`layout_float_anchored`]): several images floated to
+/// either side, anchored where they appear in the prose, with one continuous
+/// text stream wrapping around all of them (a magazine layout).
+fn layout_float(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    // Any image with an explicit `side` → the multi-image, inline-anchored
+    // magazine mode. Otherwise the single leading-image form below.
+    if has_anchored_floats(&tag.children) {
+        return layout_float_anchored(tag, x, width, ctx);
+    }
+
+    // The first image among the children is the float; everything after it
+    // wraps. No image → nothing to float around, so lay the children out
+    // normally.
+    let Some(fig_idx) = tag
+        .children
+        .iter()
+        .position(|c| find_media_tag(c).is_some())
+    else {
+        return layout_children(&tag.children, x, width, ctx);
+    };
+
+    let col = width;
+    let side_right = matches!(
+        tag.attributes.get("side"),
+        Some(Scalar::String(s)) if s.trim() == "right"
+    );
+    let gap = tag
+        .attributes
+        .get("gap")
+        .and_then(|s| match s {
+            Scalar::Number(v) => Some(*v as f32),
+            Scalar::String(s) => s.trim().parse::<f32>().ok(),
+            _ => None,
+        })
+        .unwrap_or(14.0)
+        .max(0.0);
+    let img_target_w = resolve_float_width(tag.attributes.get("width"), col);
+
+    // Lay out the image at the target width. A missing / undecodable file
+    // yields a text placeholder, not a figure — fall back to normal flow.
+    let media_tag = find_media_tag(&tag.children[fig_idx]).unwrap();
+    let mut img_blocks = layout_media(media_tag, x, img_target_w, ctx);
+    let (img_w, img_h) = match img_blocks.first().map(|b| &b.draw) {
+        Some(BlockDraw::Image { width, height, .. } | BlockDraw::Svg { width, height, .. }) => {
+            (*width, *height)
+        }
+        _ => return layout_children(&tag.children, x, width, ctx),
+    };
+    let mut img_block = img_blocks.remove(0);
+
+    let wrap_children = &tag.children[fig_idx + 1..];
+
+    // Text region beside the image. If it is too narrow to wrap sensibly,
+    // or there is nothing to wrap, stack the image over the content instead.
+    let narrow_w = col - img_w - gap;
+    if wrap_children.is_empty() || narrow_w < ctx.style.body_font_size * 6.0 {
+        let mut out = vec![img_block];
+        out.extend(layout_children(wrap_children, x, col, ctx));
+        return out;
+    }
+    let (narrow_x, img_x) = if side_right {
+        (0.0, x + col - img_w)
+    } else {
+        (img_w + gap, x)
+    };
+    // Move the image onto the chosen side (left already sits at `x`).
+    match &mut img_block.draw {
+        BlockDraw::Image { x: ix, .. } | BlockDraw::Svg { x: ix, .. } => *ix = img_x,
+        _ => {}
+    }
+    // A little air below the image so the first full-width line clears its
+    // bottom edge.
+    let exclude_h = img_h + ctx.style.body_font_size * 0.3;
+
+    // Flow the wrap blocks. Phase 1 — blocks that start beside the image are
+    // laid out narrow (and shifted); a plain paragraph reflows so its tail
+    // widens once past the image. Phase 2 — once we clear the image, lay the
+    // rest out full-width in one pass so caption/figure pairing and spacing
+    // stay intact. The running `y` mirrors `emit_blocks`' cumulative stacking
+    // so the width chosen at layout time matches where each block is drawn.
+    let mut wrap: Vec<Block> = Vec::new();
+    let mut y = 0.0_f32;
+    let mut k = 0;
+    while k < wrap_children.len() && y < exclude_h {
+        let child = &wrap_children[k];
+        let mut blocks = if is_plain_paragraph(child) {
+            layout_paragraph_float(child, x, col, narrow_x, narrow_w, exclude_h - y, ctx)
+        } else {
+            layout_node(child, x + narrow_x, narrow_w, ctx)
+        };
+        for b in &blocks {
+            y += b.height + b.space_after;
+        }
+        wrap.append(&mut blocks);
+        k += 1;
+    }
+    if k < wrap_children.len() {
+        wrap.extend(layout_children(&wrap_children[k..], x, col, ctx));
+    }
+
+    // Nothing rendered (e.g. only whitespace) → plain image block.
+    if wrap.is_empty() {
+        return vec![img_block];
+    }
+
+    // Float content height = max of the image and the wrap's drawn extent
+    // (cumulative block heights + inter-block spacing, excluding the trailing
+    // `space_after`, which the float's own `space_after` covers).
+    let mut wrap_bottom = 0.0_f32;
+    let mut acc = 0.0_f32;
+    for b in &wrap {
+        acc += b.height;
+        wrap_bottom = acc;
+        acc += b.space_after;
+    }
+
+    vec![Block {
+        height: img_h.max(wrap_bottom),
+        space_after: ctx.style.paragraph_space_after,
+        draw: BlockDraw::Float {
+            image: Box::new(img_block),
+            wrap,
+        },
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }]
+}
+
+/// Does any image in this subtree carry an explicit `side` attribute? That
+/// marks the anchored / magazine `{% float %}` mode.
+fn has_anchored_floats(children: &[RenderableTreeNode]) -> bool {
+    fn node_has(node: &RenderableTreeNode) -> bool {
+        if let RenderableTreeNode::Tag(t) = node {
+            if (t.name == "img" || t.name == "media") && t.attributes.contains_key("side") {
+                return true;
+            }
+            return t.children.iter().any(node_has);
+        }
+        false
+    }
+    children.iter().any(node_has)
+}
+
+/// Read a `side="left"|"right"` attribute; `Some(true)` for right, `Some(false)`
+/// for left, `None` if absent or unrecognised (callers default to left).
+fn media_side_right(tag: &Tag) -> Option<bool> {
+    match tag.attributes.get("side") {
+        Some(Scalar::String(s)) => match s.trim() {
+            "right" => Some(true),
+            "left" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Append `src`'s inline content onto `dst`, shifting every byte-keyed span
+/// (ranges, links, anchors, footnote calls) past `dst`'s current length.
+fn append_inlines(dst: &mut Inlines, src: Inlines) {
+    let base = dst.text.len();
+    dst.text.push_str(&src.text);
+    for mut r in src.style_ranges {
+        r.start += base;
+        r.end += base;
+        dst.style_ranges.push(r);
+    }
+    for mut l in src.links {
+        l.start += base;
+        l.end += base;
+        dst.links.push(l);
+    }
+    for mut m in src.mid_anchors {
+        m.byte_offset += base;
+        dst.mid_anchors.push(m);
+    }
+    for mut f in src.footnote_calls {
+        f.byte_offset += base;
+        dst.footnote_calls.push(f);
+    }
+}
+
+/// Flatten a `{% float %}` region's children into one prose stream, recording
+/// each image as a float anchor `(byte_offset, tag)` at the point it appears.
+/// Paragraphs are separated by a blank line; images (inline within a sentence
+/// or block-level between paragraphs) contribute no text, only an anchor.
+fn flatten_anchored(
+    children: &[RenderableTreeNode],
+    ctx: &mut LayoutCtx<'_>,
+) -> (Inlines, Vec<(usize, Tag)>) {
+    fn run(
+        children: &[RenderableTreeNode],
+        ib: &mut Inlines,
+        anchors: &mut Vec<(usize, Tag)>,
+        ctx: &mut LayoutCtx<'_>,
+    ) {
+        for c in children {
+            match c {
+                RenderableTreeNode::Tag(t) if t.name == "img" || t.name == "media" => {
+                    anchors.push((ib.text.len(), (**t).clone()));
+                }
+                other => {
+                    let sub = Inlines::from(std::slice::from_ref(other), &mut ctx.footnotes);
+                    append_inlines(ib, sub);
+                }
+            }
+        }
+    }
+
+    let mut ib = Inlines::new();
+    let mut anchors: Vec<(usize, Tag)> = Vec::new();
+    for child in children {
+        match child {
+            RenderableTreeNode::Tag(t) if t.name == "p" || t.name == "div" => {
+                if !ib.text.is_empty() {
+                    ib.text.push_str("\n\n");
+                }
+                run(&t.children, &mut ib, &mut anchors, ctx);
+            }
+            RenderableTreeNode::Tag(t) if t.name == "img" || t.name == "media" => {
+                // Bare block-level media between paragraphs.
+                anchors.push((ib.text.len(), (**t).clone()));
+            }
+            other => {
+                if !ib.text.is_empty() {
+                    ib.text.push_str("\n\n");
+                }
+                let sub = Inlines::from(std::slice::from_ref(other), &mut ctx.footnotes);
+                append_inlines(&mut ib, sub);
+            }
+        }
+    }
+    (ib, anchors)
+}
+
+/// Anchored / magazine `{% float %}` — several images floated to either side
+/// (`{% media src=… side="left|right" width=… /%}`), each anchored where it
+/// appears in the prose, with one continuous text stream wrapping around all
+/// of them. See [`build_layout_float_anchored`] for the per-line mechanism.
+///
+/// Prose-only: rich blocks between the floats are flattened to paragraphs (for
+/// structured content beside a single image use the leading-image `{% float %}`
+/// form). Footnotes and mid-paragraph anchors in the prose are preserved.
+fn layout_float_anchored(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let col = width;
+    let gap = tag
+        .attributes
+        .get("gap")
+        .and_then(|s| match s {
+            Scalar::Number(v) => Some(*v as f32),
+            Scalar::String(s) => s.trim().parse::<f32>().ok(),
+            _ => None,
+        })
+        .unwrap_or(14.0)
+        .max(0.0);
+
+    let (mut inlines, anchor_tags) = flatten_anchored(&tag.children, ctx);
+    if anchor_tags.is_empty() || inlines.text.trim().is_empty() {
+        return layout_children(&tag.children, x, width, ctx);
+    }
+
+    // Lay out each anchored image; keep specs and image blocks aligned.
+    let mut specs: Vec<FloatSpec> = Vec::new();
+    let mut images: Vec<Block> = Vec::new();
+    for (offset, mtag) in &anchor_tags {
+        let side_right = media_side_right(mtag).unwrap_or(false);
+        let target_w = resolve_float_width(mtag.attributes.get("width"), col);
+        let mut blocks = layout_media(mtag, x, target_w, ctx);
+        let (w, h) = match blocks.first().map(|b| &b.draw) {
+            Some(BlockDraw::Image { width, height, .. } | BlockDraw::Svg { width, height, .. }) => {
+                (*width, *height)
+            }
+            // Missing / undecodable image → drop this anchor (its placeholder
+            // block is discarded; the prose still flows).
+            _ => continue,
+        };
+        specs.push(FloatSpec {
+            offset: *offset,
+            side_right,
+            width: w,
+            height: h,
+        });
+        images.push(blocks.remove(0));
+    }
+
+    // Nothing floatable, or the widest float leaves too little measure → fall
+    // back to normal stacked flow rather than an unreadable ribbon of text.
+    let max_reserve = specs.iter().map(|s| s.width + gap).fold(0.0_f32, f32::max);
+    if specs.is_empty() || col - max_reserve < ctx.style.body_font_size * 6.0 {
+        return layout_children(&tag.children, x, width, ctx);
+    }
+
+    // Link text styling (colour / weight / underline), as paragraphs do.
+    let link_style = &ctx.style.link;
+    let link_color: krilla::color::rgb::Color = link_style.color.into();
+    for link in &inlines.links {
+        inlines.style_ranges.push(InlineRange {
+            start: link.start,
+            end: link.end,
+            prop: InlineProp::Color(link_color),
+        });
+        if link_style.italic {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Italic,
+            });
+        }
+        if link_style.bold {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Bold,
+            });
+        }
+    }
+    if link_style.underline {
+        for link in &inlines.links {
+            inlines.style_ranges.push(InlineRange {
+                start: link.start,
+                end: link.end,
+                prop: InlineProp::Underline {
+                    thickness: link_style.underline_thickness,
+                },
+            });
+        }
+    }
+    // No hyphenation here: it would insert soft hyphens and shift the float
+    // anchor byte offsets recorded above.
+
+    let style = TextStyle {
+        font_size: ctx.style.body_font_size,
+        font_weight: 400.0,
+        line_height: ctx.style.body_line_height,
+        color: ctx.style.text_color.into(),
+        font_families: ctx.body_families,
+        italic: false,
+    };
+    let (layout, placements) = build_layout_float_anchored(
+        &inlines.text,
+        &inlines.style_ranges,
+        &style,
+        col,
+        gap,
+        &specs,
+        ctx.font_cx,
+        ctx.layout_cx,
+    );
+    let text_slice = TextSlice::whole_with_extras(
+        layout,
+        inlines.text,
+        inlines.links,
+        inlines.mid_anchors,
+        inlines.footnote_calls,
+        x,
+    );
+    let mut region_bottom = text_slice.height();
+
+    // Position each image (absolute x, region-relative y) and grow the region
+    // to cover any float that hangs below the text.
+    let mut floats: Vec<FloatItem> = Vec::new();
+    for (i, mut img) in images.into_iter().enumerate() {
+        let p = placements[i];
+        match &mut img.draw {
+            BlockDraw::Image { x: ix, .. } | BlockDraw::Svg { x: ix, .. } => *ix = x + p.x,
+            _ => {}
+        }
+        region_bottom = region_bottom.max(p.y + specs[i].height);
+        floats.push(FloatItem {
+            image: Box::new(img),
+            y_offset: p.y,
+        });
+    }
+
+    vec![Block {
+        height: region_bottom,
+        space_after: ctx.style.paragraph_space_after,
+        draw: BlockDraw::FloatRegion {
+            text: text_slice,
+            floats,
+        },
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }]
 }
 
 fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {

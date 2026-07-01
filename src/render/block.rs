@@ -689,6 +689,24 @@ pub enum BlockDraw {
         text: TextSlice,
         floats: Vec<FloatItem>,
     },
+    /// A print form field — the `{% input %}` tag. Pure graphics (a label
+    /// above a ruled box), so it is PDF/A-safe: no interactive widget, no
+    /// JavaScript. `label` sits at the block top; the field box is stroked at
+    /// `(field_x, field_y)` (both relative to the block, `field_x` absolute
+    /// x); an optional small grey `hint` (type / constraints) sits at
+    /// `hint_y`. Field width follows `maxlength`; `type="checkbox"` is a small
+    /// square.
+    FormField {
+        label: Option<TextSlice>,
+        field_x: f32,
+        field_y: f32,
+        field_w: f32,
+        field_h: f32,
+        border: rgb::Color,
+        thickness: f32,
+        hint: Option<TextSlice>,
+        hint_y: f32,
+    },
 }
 
 /// One placed image inside a [`BlockDraw::FloatRegion`]: a fully-positioned
@@ -1117,6 +1135,9 @@ fn layout_node(
         // `{% float %}` — an image on one side with prose wrapping around it.
         "float" => layout_float(tag, x, width, ctx),
 
+        // `{% input %}` — a print form field (label + ruled box).
+        "input" => layout_input(tag, x, width, ctx),
+
         "img" | "media" => layout_media(tag, x, width, ctx),
 
         // `{% toc /%}` marks where a start-positioned table of contents
@@ -1399,6 +1420,10 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
                 }
                 "callout" => {
                     promoted.extend(layout_callout(t, x, width, ctx));
+                    continue;
+                }
+                "input" => {
+                    promoted.extend(layout_input(t, x, width, ctx));
                     continue;
                 }
                 _ => {}
@@ -3371,6 +3396,165 @@ fn layout_float_anchored(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>)
         draw: BlockDraw::FloatRegion {
             text: text_slice,
             floats,
+        },
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }]
+}
+
+/// `{% input %}` — a print form field: a label above a ruled box (pure
+/// graphics, so PDF/A-safe — no interactive widget and no JavaScript, which
+/// PDF/A forbids). The box width follows `maxlength` (roughly one character
+/// per unit, capped to the column); without it the box fills the measure.
+/// `type="checkbox"` draws a small square. A small grey hint below the box
+/// spells out the type / length / range constraints for whoever fills the
+/// form by hand, since a static PDF cannot enforce them.
+fn layout_input(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let attr_str = |k: &str| match tag.attributes.get(k) {
+        Some(Scalar::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        _ => None,
+    };
+    let attr_num = |k: &str| match tag.attributes.get(k) {
+        Some(Scalar::Number(n)) => Some(*n),
+        Some(Scalar::String(s)) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    // Display form of a value for the hint (keeps date-like strings verbatim).
+    let attr_disp = |k: &str| match tag.attributes.get(k) {
+        Some(Scalar::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        Some(Scalar::Number(n)) => Some(if n.fract() == 0.0 {
+            format!("{}", *n as i64)
+        } else {
+            format!("{n}")
+        }),
+        _ => None,
+    };
+    let required = matches!(tag.attributes.get("required"), Some(Scalar::Boolean(true)))
+        || matches!(tag.attributes.get("required"),
+            Some(Scalar::String(s)) if s.trim().eq_ignore_ascii_case("true"));
+
+    let ty = attr_str("type").unwrap_or_else(|| "text".to_string());
+    let is_checkbox = ty == "checkbox";
+    let label_txt = attr_str("label")
+        .or_else(|| attr_str("name"))
+        .unwrap_or_default();
+
+    let fs = ctx.style.body_font_size;
+    let border: krilla::color::rgb::Color = ctx.style.blockquote_text_color.into();
+    let thickness = 0.75;
+
+    // Label, with a red required marker appended.
+    let label_style = TextStyle {
+        font_size: fs,
+        font_weight: 400.0,
+        line_height: ctx.style.body_line_height,
+        color: ctx.style.text_color.into(),
+        font_families: ctx.body_families,
+        italic: false,
+    };
+    let label_slice = if label_txt.is_empty() {
+        None
+    } else {
+        let mut text = label_txt.clone();
+        let mut ranges: Vec<InlineRange> = Vec::new();
+        if required {
+            let star_start = text.len() + 1; // after the joining space
+            text.push_str(" *");
+            ranges.push(InlineRange {
+                start: star_start,
+                end: text.len(),
+                prop: InlineProp::Color(krilla::color::rgb::Color::new(200, 45, 45)),
+            });
+        }
+        let layout = build_layout(
+            &text,
+            &ranges,
+            &label_style,
+            width,
+            ctx.font_cx,
+            ctx.layout_cx,
+        );
+        Some(TextSlice::whole(layout, text, Vec::new(), x))
+    };
+    let label_h = label_slice.as_ref().map(|s| s.height()).unwrap_or(0.0);
+
+    // Field box: below the label. Sized by `maxlength`, else fills the width.
+    let gap1 = fs * 0.3;
+    let field_y = label_h + gap1;
+    let (field_w, field_h) = if is_checkbox {
+        let s = fs * 1.05;
+        (s, s)
+    } else {
+        let char_w = fs * 0.62;
+        let desired = match attr_num("maxlength") {
+            Some(ml) if ml > 0.0 => (ml as f32 * char_w).max(char_w * 3.0),
+            _ => width,
+        };
+        let fw = desired.min(width).max((fs * 3.0).min(width));
+        (fw, fs * 1.5)
+    };
+
+    // Constraint hint: what the person filling it in needs to know.
+    let mut parts: Vec<String> = Vec::new();
+    if ty != "text" && ty != "checkbox" {
+        parts.push(ty.clone());
+    }
+    match (attr_num("minlength"), attr_num("maxlength")) {
+        (Some(a), Some(b)) => parts.push(format!("{}\u{2013}{} chars", a as i64, b as i64)),
+        (None, Some(b)) => parts.push(format!("max {} chars", b as i64)),
+        (Some(a), None) => parts.push(format!("min {} chars", a as i64)),
+        (None, None) => {}
+    }
+    match (attr_disp("min"), attr_disp("max")) {
+        (Some(a), Some(b)) => parts.push(format!("{a}\u{2013}{b}")),
+        (None, Some(b)) => parts.push(format!("\u{2264} {b}")),
+        (Some(a), None) => parts.push(format!("\u{2265} {a}")),
+        (None, None) => {}
+    }
+    let hint_str = parts.join("  \u{b7}  ");
+    let hint_slice = if hint_str.is_empty() {
+        None
+    } else {
+        let hint_style = TextStyle {
+            font_size: fs * 0.82,
+            font_weight: 400.0,
+            line_height: ctx.style.body_line_height,
+            color: ctx.style.blockquote_text_color.into(),
+            font_families: ctx.body_families,
+            italic: true,
+        };
+        let layout = build_layout(
+            &hint_str,
+            &[],
+            &hint_style,
+            width,
+            ctx.font_cx,
+            ctx.layout_cx,
+        );
+        Some(TextSlice::whole(layout, hint_str, Vec::new(), x))
+    };
+
+    let gap2 = fs * 0.25;
+    let hint_y = field_y + field_h + gap2;
+    let height = match &hint_slice {
+        Some(h) => hint_y + h.height(),
+        None => field_y + field_h,
+    };
+
+    vec![Block {
+        height,
+        space_after: ctx.style.paragraph_space_after,
+        draw: BlockDraw::FormField {
+            label: label_slice,
+            field_x: x,
+            field_y,
+            field_w,
+            field_h,
+            border,
+            thickness,
+            hint: hint_slice,
+            hint_y,
         },
         outline: None,
         anchor_id: None,

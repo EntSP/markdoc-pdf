@@ -1,0 +1,23 @@
+---
+title: Print form fields
+---
+
+# Inspection form
+
+`\{% input %}` renders a print form field — a label above a ruled box, sized
+by `maxlength`, with the type / length / value constraints noted beneath. It
+is pure graphics, so it stays PDF/A-safe (PDF/A forbids the JavaScript that a
+live-validated PDF field would need). The same tag renders as a native,
+validated `<input>` on the web.
+
+{% input name="serial" label="Serial number" type="text" required=true minlength=4 maxlength=24 /%}
+
+{% input name="qty" label="Quantity received" type="number" required=true min=1 max=100 /%}
+
+{% input name="email" label="Contact email" type="email" /%}
+
+{% input name="date" label="Inspection date" type="date" /%}
+
+{% input name="passed" label="Passed inspection" type="checkbox" required=true /%}
+
+{% input name="notes" label="Notes" maxlength=60 /%}

@@ -738,6 +738,63 @@ fn emit_block(
                 TagKind::P(Tag::<kind::P>::P),
             );
         }
+
+        BlockDraw::FormField {
+            label,
+            field_x,
+            field_y,
+            field_w,
+            field_h,
+            border,
+            thickness,
+            hint,
+            hint_y,
+        } => {
+            if let Some(l) = label {
+                emit_text_slice(
+                    surface,
+                    l,
+                    y,
+                    font_cache,
+                    links,
+                    tags,
+                    TagKind::P(Tag::<kind::P>::P),
+                );
+            }
+            // Stroke the field box (a plain rectangle outline — pure graphics).
+            let bx = *field_x;
+            let by = y + *field_y;
+            let mut pb = PathBuilder::new();
+            pb.move_to(bx, by);
+            pb.line_to(bx + *field_w, by);
+            pb.line_to(bx + *field_w, by + *field_h);
+            pb.line_to(bx, by + *field_h);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                // Clear any leftover fill (e.g. the label's last glyph colour)
+                // so the box is a stroked outline, not a filled rectangle.
+                surface.set_fill(None);
+                surface.set_stroke(Some(Stroke {
+                    paint: (*border).into(),
+                    width: *thickness,
+                    opacity: NormalizedF32::ONE,
+                    ..Default::default()
+                }));
+                surface.draw_path(&path);
+                surface.set_stroke(None);
+            }
+            if let Some(h) = hint {
+                emit_text_slice(
+                    surface,
+                    h,
+                    y + *hint_y,
+                    font_cache,
+                    links,
+                    tags,
+                    TagKind::P(Tag::<kind::P>::P),
+                );
+            }
+        }
     }
 }
 

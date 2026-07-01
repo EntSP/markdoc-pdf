@@ -2676,12 +2676,40 @@ fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
         attributes: std::collections::HashMap::new(),
         children: tds,
     }));
+    // Column widths: `widths="2 1"` or `widths=[2, 1]` gives uneven columns
+    // (relative weights). A missing/invalid value — or a count that does not
+    // match the number of columns — falls back to equal widths.
+    let widths: Option<Vec<f32>> = match tag.attributes.get("widths") {
+        Some(Scalar::Array(items)) => Some(
+            items
+                .iter()
+                .filter_map(|it| match it {
+                    Scalar::Number(v) => Some(*v as f32),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        Some(Scalar::String(s)) => Some(
+            s.split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|t| !t.is_empty())
+                .filter_map(|t| t.parse::<f32>().ok())
+                .collect(),
+        ),
+        _ => None,
+    };
+    let weights = widths
+        .filter(|w| w.len() == n && w.iter().all(|v| *v > 0.0))
+        .map(|w| {
+            w.iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_else(|| vec!["1"; n].join(" "));
+
     let mut table_attrs = std::collections::HashMap::new();
     table_attrs.insert("borders".to_string(), Scalar::String("none".to_string()));
-    table_attrs.insert(
-        "column_weights".to_string(),
-        Scalar::String(vec!["1"; n].join(" ")),
-    );
+    table_attrs.insert("column_weights".to_string(), Scalar::String(weights));
     table_attrs.insert(
         "cell_padding".to_string(),
         Scalar::Number((gap / 2.0) as f64),

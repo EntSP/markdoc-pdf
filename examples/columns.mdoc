@@ -5,9 +5,10 @@ title: Side-by-side columns
 # Side-by-side columns
 
 `\{% columns %}` places its children in equal-width columns, side by side.
-Each column is either a list item (`*`) or a blank-line-separated block; the
-`gap` attribute (points) sets the space between them. Render with
-`--assets-root examples` so the swatch images resolve.
+Each column is either a list item (`*`) or a blank-line-separated block. The
+`gap` attribute (points) sets the spacing, and `widths` (e.g. `widths="2 1"`
+or `widths=[2, 1]`) makes them uneven. Render with `--assets-root examples`
+so the swatch images resolve.
 
 ## Two images — list form
 
@@ -26,17 +27,30 @@ Each column is either a list item (`*`) or a blank-line-separated block; the
 ![](swatch.png)
 {% /columns %}
 
-## Per-column captions
+## Uneven widths — widths="2 1 1"
+
+The first column takes twice the width of the other two. Content that scales
+(an SVG, or text) fills its column; a small raster renders at its natural
+size within the column.
+
+{% columns widths="2 1 1" %}
+* ![](swatch.svg)
+* ![](swatch.svg)
+* ![](swatch.svg)
+{% /columns %}
+
+## Captions — above, below, and coloured
 
 Put a `\{% caption %}` and its image in one list item, separated by a blank
-line, so they stay distinct blocks and the caption attaches to the image:
+line, so they stay distinct blocks. `position="below"` moves the caption
+under the image, and wrapping the text in `\{% color %}` tints it:
 
 {% columns %}
-* {% caption %}Raster swatch{% /caption %}
+* {% caption %}Above (the default){% /caption %}
 
   ![](swatch.png)
 
-* {% caption %}Vector swatch{% /caption %}
+* {% caption position="below" %}{% color value="#c026d3" %}Below, coloured{% /color %}{% /caption %}
 
   ![](swatch.svg)
 {% /columns %}

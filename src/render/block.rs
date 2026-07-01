@@ -1109,9 +1109,16 @@ fn layout_children(
         // block above the figure/table, AND stash the caption text so
         // the corresponding layout (table / media) attaches it for
         // LoT / LoF entries.
-        if let Some((cap_text, target, override_pos)) = caption_before_target(children, i) {
-            let caption_block =
-                build_caption_block(&caption_inlines_for_node(&children[i]), x, width, ctx);
+        if let Some((cap_text, target, override_pos, override_color)) =
+            caption_before_target(children, i)
+        {
+            let caption_block = build_caption_block(
+                &caption_inlines_for_node(&children[i]),
+                x,
+                width,
+                override_color,
+                ctx,
+            );
             match target {
                 CaptionTarget::Table => ctx.pending_table_caption = Some(cap_text.clone()),
                 CaptionTarget::Figure => ctx.pending_figure_caption = Some(cap_text.clone()),
@@ -1146,12 +1153,23 @@ enum CaptionTarget {
 }
 
 /// Lay out the visible caption text as a small italic block at column x.
-fn build_caption_block(inlines: &Inlines, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Block {
+fn build_caption_block(
+    inlines: &Inlines,
+    x: f32,
+    width: f32,
+    color_override: Option<krilla::color::rgb::Color>,
+    ctx: &mut LayoutCtx<'_>,
+) -> Block {
+    // Per-caption `color` wins, then the document `caption_color`, then the
+    // historical fallback of the block-quote text colour.
+    let color = color_override
+        .or_else(|| ctx.style.caption_color.map(|c| c.into()))
+        .unwrap_or_else(|| ctx.style.blockquote_text_color.into());
     let style = TextStyle {
         font_size: ctx.style.body_font_size * 0.92,
         font_weight: 400.0,
         line_height: ctx.style.body_line_height,
-        color: ctx.style.blockquote_text_color.into(),
+        color,
         font_families: ctx.body_families,
         italic: true,
     };
@@ -1185,12 +1203,18 @@ fn build_caption_block(inlines: &Inlines, x: f32, width: f32, ctx: &mut LayoutCt
 /// If `children[i]` is a caption tag (or a paragraph wrapping one) and
 /// `children[i+1]` is a captionable target (table or figure, possibly
 /// wrapped in a `<p>`), return the caption's collected inline text,
-/// the target kind, and an optional per-caption position override
-/// supplied as `{% caption position="above"|"below" %}`.
+/// the target kind, and optional per-caption overrides for position
+/// (`{% caption position="above"|"below" %}`) and colour
+/// (`{% caption color="#…" %}`).
 fn caption_before_target(
     children: &[RenderableTreeNode],
     i: usize,
-) -> Option<(String, CaptionTarget, Option<super::style::CaptionPosition>)> {
+) -> Option<(
+    String,
+    CaptionTarget,
+    Option<super::style::CaptionPosition>,
+    Option<krilla::color::rgb::Color>,
+)> {
     let cap = find_caption_tag(children.get(i)?)?;
     let next = children.get(i + 1)?;
     let target = classify_caption_target(next)?;
@@ -1204,7 +1228,8 @@ fn caption_before_target(
         return None;
     }
     let override_pos = caption_position_attr(cap);
-    Some((text, target, override_pos))
+    let override_color = caption_color_attr(cap);
+    Some((text, target, override_pos, override_color))
 }
 
 /// Read an optional `position="above"|"below"` attribute from a
@@ -1216,6 +1241,15 @@ fn caption_position_attr(cap: &Tag) -> Option<super::style::CaptionPosition> {
             "below" => Some(super::style::CaptionPosition::Below),
             _ => None,
         },
+        _ => None,
+    }
+}
+
+/// Read an optional `color="#rrggbb"` (or CSS named colour) attribute from a
+/// `{% caption %}` tag; unparsable values are ignored.
+fn caption_color_attr(cap: &Tag) -> Option<krilla::color::rgb::Color> {
+    match cap.attributes.get("color") {
+        Some(Scalar::String(s)) => super::inline::parse_css_color(s),
         _ => None,
     }
 }

@@ -453,6 +453,10 @@ pub struct Style {
 
     // ── Captions ──────────────────────────────────────────────────────
     pub caption_position: CaptionPosition,
+    /// Colour for figure/table caption text. `None` falls back to
+    /// `blockquote_text_color` (the historical default); a per-caption
+    /// `{% caption color="#…" %}` overrides both.
+    pub caption_color: Option<ColorRgb>,
     /// Prefix used for figure caption labels — `"<prefix> N"` or
     /// `"<prefix> N: caption"`. Defaults to "Figure"; common alternates
     /// include "Fig.", "Image", localised forms, etc.
@@ -583,6 +587,7 @@ impl Default for Style {
             pdf_export: PdfExportProfile::default(),
             page_decoration: PageDecorationStyle::default(),
             caption_position: CaptionPosition::Above,
+            caption_color: None,
             figure_caption_prefix: "Figure".to_string(),
             table_caption_prefix: "Table".to_string(),
             caption_separator: ":".to_string(),

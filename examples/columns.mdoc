@@ -43,14 +43,15 @@ size within the column.
 
 Put a `\{% caption %}` and its image in one list item, separated by a blank
 line, so they stay distinct blocks. `position="below"` moves the caption
-under the image, and wrapping the text in `\{% color %}` tints it:
+under the image, and `color="#…"` tints it (or set `caption_color` in the
+style to colour every caption):
 
 {% columns %}
 * {% caption %}Above (the default){% /caption %}
 
   ![](swatch.png)
 
-* {% caption position="below" %}{% color value="#c026d3" %}Below, coloured{% /color %}{% /caption %}
+* {% caption position="below" color="#c026d3" %}Below, coloured{% /caption %}
 
   ![](swatch.svg)
 {% /columns %}

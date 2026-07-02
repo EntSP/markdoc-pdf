@@ -77,11 +77,17 @@ Public modules:
 
 - **Markdoc primitives**: headings, paragraphs, lists, blockquotes,
   fenced code (syntax-highlighted via the style's theme), tables,
-  inline emphasis, links, images (`![](…)` and `{% media %}`).
+  inline emphasis, links, images (`![](…)` and `{% media %}` / `{% img %}`,
+  referenced by path or by Arca asset `id`).
 - **Tags from the Flux spec**: `{% callout %}`, `{% caption %}`,
   `{% footnote %}`, `{% tag id="…" /%}`, `{% tagref id="…" /%}`,
   `{% partial file="…" /%}` (recursive, cycle-detected),
   `{% if … %}` / `{% else %}` chains.
+- **Layout & form constructs** (renderer extensions beyond the spec):
+  side-by-side `{% columns %}`, text-wrapping `{% float %}` (a single image,
+  or several inline-anchored "magazine" floats), print form fields
+  (`{% input %}`, pure graphics so PDF/A-safe), inline colour
+  (`{% color %}` / `{% c %}`), and custom list markers (`{% list %}`).
 - **Frontmatter as metadata**: `/Title`, `/Author`, `/Creator`,
   `/CreationDate` written into the PDF `/Info` dictionary; same
   fields surface as `{title}`, `{authors}`, `{date}` template
@@ -170,9 +176,6 @@ Notable crates this pulls in:
 | [`image`](https://crates.io/crates/image) | Raster image decode |
 | [`hyphenation`](https://crates.io/crates/hyphenation) | Embedded en-US patterns |
 | `clap`, `toml`, `serde`, `time`, `ureq`, `thiserror` | CLI / config / IO plumbing |
-
-The result is a single self-contained binary (~25 MB unstripped,
-~12–15 MB stripped). No Java, no Python, no Pandoc.
 
 ## Status
 

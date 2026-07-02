@@ -9,7 +9,7 @@ custom fonts are loadable via the style file).
 
 The easiest path if you already have Rust installed.
 
-**Prerequisites**: Rust 1.85 or newer. If you don't have Rust:
+**Prerequisites**: Rust 1.93 or newer. If you don't have Rust:
 
 ```sh
 # Linux / macOS
@@ -130,7 +130,7 @@ From the parent folder containing `markdoc/`, `flux-types/` and
 
 ```sh
 podman run --rm -v "$PWD":/work -w /work/markdoc-pdf \
-    docker.io/library/rust:1.95-alpine \
+    docker.io/library/rust:1.93-alpine \
     sh -c 'apk add --no-cache musl-dev && cargo build --release --bin markdoc-pdf'
 # Binary lands at: markdoc-pdf/target/release/markdoc-pdf
 ```

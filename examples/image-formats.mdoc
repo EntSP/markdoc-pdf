@@ -1,0 +1,26 @@
+---
+title: Image formats
+---
+
+# Raster image formats
+
+markdoc-pdf decodes every image from its bytes, so the file extension is only
+a hint — a mislabelled file still renders. These are the supported raster
+formats; reference any of them with markdown `![](…)` or `\{% media src="…" /%}`
+(paths resolve against `--assets-root`, or use an Arca `id`). PNG works
+identically, and SVG (vector) appears in the other examples.
+
+## JPEG — good for photographs and gradients
+
+![Blue-to-purple gradient labelled JPEG](sample.jpg)
+
+## GIF — flat colour; animation shows the first frame only
+
+A PDF has no animated raster, so an animated GIF renders its first frame; a
+static GIF like this one renders as-is.
+
+![Green tile labelled GIF](sample.gif)
+
+## WebP
+
+{% media src="sample.webp" alt="Red tile labelled WebP" /%}

@@ -1,0 +1,69 @@
+---
+title: Status light legend
+---
+
+# Status light legend
+
+A machine's status light shows its current state through colour and pattern.
+This legend is built from the generic primitives — each cell is a
+`\{% swatch %}` bar over a bold label and a short grey description, and
+`\{% grid %}` reflows the cells into as many equal columns as fit. Solid
+colours and gradient *patterns* (a steady light versus a pulsing, blinking, or
+fading one) sit side by side, and it stays a compact, scannable key on any
+page width.
+
+{% grid min=132 gap=16 %}
+* {% swatch color="#00a000" height=6 /%}
+
+  **Steady green**
+
+  {% color value="#6c757d" %}Running normally{% /color %}
+
+* {% swatch color="#fd7e14" height=6 /%}
+
+  **Steady amber**
+
+  {% color value="#6c757d" %}Warning — attention needed{% /color %}
+
+* {% swatch color="#e00000" height=6 /%}
+
+  **Steady red**
+
+  {% color value="#6c757d" %}Fault — stopped{% /color %}
+
+* {% swatch color="#0066ff" height=6 /%}
+
+  **Steady blue**
+
+  {% color value="#6c757d" %}Manual mode{% /color %}
+
+* {% swatch gradient="90deg, #00a000, #ffffff, #00a000" height=6 /%}
+
+  **Pulsing green**
+
+  {% color value="#6c757d" %}Starting up{% /color %}
+
+* {% swatch gradient="90deg, #fd7e14, #ffffff, #fd7e14" height=6 /%}
+
+  **Pulsing amber**
+
+  {% color value="#6c757d" %}Busy — please wait{% /color %}
+
+* {% swatch gradient="90deg, transparent 0%, #e00000 25%, transparent 50%, #e00000 75%, transparent 100%" height=6 /%}
+
+  **Blinking red**
+
+  {% color value="#6c757d" %}Critical alert{% /color %}
+
+* {% swatch gradient="180deg, #ffffff, #cfd4da" height=6 /%}
+
+  **Fading white**
+
+  {% color value="#6c757d" %}Powering down{% /color %}
+
+* {% swatch color="#7a3cf0" height=6 /%}
+
+  **Steady violet**
+
+  {% color value="#6c757d" %}Updating firmware{% /color %}
+{% /grid %}

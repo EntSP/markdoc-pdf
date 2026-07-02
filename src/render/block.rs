@@ -1142,6 +1142,9 @@ fn layout_node(
         // `{% grid %}` — cells reflow into as many equal columns as fit.
         "grid" => layout_grid(tag, x, width, ctx),
 
+        // `{% swatch %}` — a block colour bar / chip (solid or gradient).
+        "swatch" => layout_swatch(tag, x, width, ctx),
+
         // `{% float %}` — an image on one side with prose wrapping around it.
         "float" => layout_float(tag, x, width, ctx),
 
@@ -3046,6 +3049,219 @@ fn layout_grid(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Bl
             ctx.style.paragraph_space_after,
         )],
         None => out,
+    }
+}
+
+/// A colour stop in a swatch gradient: a hex colour, an offset in `0..1`,
+/// and an opacity (0 for a CSS `transparent` stop).
+struct SwatchStop {
+    color: String,
+    offset: f32,
+    opacity: f32,
+}
+
+/// How a `{% swatch %}` bar is filled.
+enum SwatchFill {
+    Solid(String),
+    Gradient { angle: f32, stops: Vec<SwatchStop> },
+}
+
+/// Normalise a CSS colour (hex `#rgb` / `#rrggbb`, or a basic name) to a
+/// `#rrggbb` string, so only sanitised hex reaches the synthesised SVG.
+/// Mirrors `inline::parse_css_color`'s palette; `None` for `transparent` or
+/// anything unrecognised.
+fn css_hex(s: &str) -> Option<String> {
+    let s = s.trim();
+    if let Some(h) = s.strip_prefix('#') {
+        return match h.len() {
+            3 if h.bytes().all(|b| b.is_ascii_hexdigit()) => {
+                Some(h.chars().fold(String::from("#"), |mut a, c| {
+                    a.push(c);
+                    a.push(c);
+                    a
+                }))
+            }
+            6 if h.bytes().all(|b| b.is_ascii_hexdigit()) => {
+                Some(format!("#{}", h.to_ascii_lowercase()))
+            }
+            _ => None,
+        };
+    }
+    Some(
+        match s.to_ascii_lowercase().as_str() {
+            "red" => "#cc0000",
+            "green" => "#008000",
+            "blue" => "#0000cc",
+            "orange" => "#ff7800",
+            "black" => "#000000",
+            "white" => "#ffffff",
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
+
+/// CSS gradient angle (deg; 0 = up, 90 = right) → SVG objectBoundingBox
+/// gradient axis `(x1, y1, x2, y2)` in `0..1` (y grows downward).
+fn angle_to_axis(deg: f32) -> (f32, f32, f32, f32) {
+    let r = deg.to_radians();
+    let (dx, dy) = (r.sin(), -r.cos());
+    (
+        (0.5 - 0.5 * dx).clamp(0.0, 1.0),
+        (0.5 - 0.5 * dy).clamp(0.0, 1.0),
+        (0.5 + 0.5 * dx).clamp(0.0, 1.0),
+        (0.5 + 0.5 * dy).clamp(0.0, 1.0),
+    )
+}
+
+/// Parse a `gradient="[Ndeg,] stop, stop, …"` value: each stop is a CSS
+/// colour (or `transparent`) with an optional `NN%` position; stops without
+/// one are spread evenly. A `transparent` stop borrows its nearest opaque
+/// neighbour's colour at zero opacity, so the fade stays in hue rather than
+/// dipping through black.
+fn parse_gradient(s: &str) -> Option<SwatchFill> {
+    let mut parts: Vec<&str> = s
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let mut angle = 90.0_f32;
+    let first = parts[0];
+    let is_stop = first.starts_with('#')
+        || first.eq_ignore_ascii_case("transparent")
+        || css_hex(first.split_whitespace().next().unwrap_or("")).is_some();
+    if !is_stop {
+        angle = first.trim_end_matches("deg").trim().parse::<f32>().ok()?;
+        parts.remove(0);
+    }
+    let n = parts.len();
+    if n < 2 {
+        return None;
+    }
+    let mut colors: Vec<Option<String>> = Vec::with_capacity(n);
+    let mut offsets: Vec<f32> = Vec::with_capacity(n);
+    for (i, p) in parts.iter().enumerate() {
+        let mut it = p.split_whitespace();
+        let tok = it.next().unwrap_or("");
+        let off = it
+            .next()
+            .and_then(|q| q.trim_end_matches('%').parse::<f32>().ok())
+            .map(|v| (v / 100.0).clamp(0.0, 1.0))
+            .unwrap_or(i as f32 / (n as f32 - 1.0));
+        offsets.push(off);
+        if tok.eq_ignore_ascii_case("transparent") {
+            colors.push(None);
+        } else {
+            colors.push(Some(css_hex(tok)?)); // an invalid opaque colour fails the whole swatch
+        }
+    }
+    let stops = (0..n)
+        .map(|i| {
+            if let Some(c) = &colors[i] {
+                SwatchStop {
+                    color: c.clone(),
+                    offset: offsets[i],
+                    opacity: 1.0,
+                }
+            } else {
+                let near = (0..n)
+                    .filter_map(|j| {
+                        colors[j]
+                            .as_ref()
+                            .map(|c| ((j as i32 - i as i32).unsigned_abs(), c.clone()))
+                    })
+                    .min_by_key(|(d, _)| *d)
+                    .map(|(_, c)| c)
+                    .unwrap_or_else(|| "#ffffff".to_string());
+                SwatchStop {
+                    color: near,
+                    offset: offsets[i],
+                    opacity: 0.0,
+                }
+            }
+        })
+        .collect();
+    Some(SwatchFill::Gradient { angle, stops })
+}
+
+/// The fill for a `{% swatch %}` from its attributes (`gradient` wins over
+/// `color`).
+fn parse_swatch_fill(attrs: &std::collections::HashMap<String, Scalar>) -> Option<SwatchFill> {
+    if let Some(Scalar::String(g)) = attrs.get("gradient") {
+        return parse_gradient(g);
+    }
+    if let Some(Scalar::String(c)) = attrs.get("color") {
+        return css_hex(c).map(SwatchFill::Solid);
+    }
+    None
+}
+
+/// Build a self-contained SVG for a `w × h`-point swatch bar with corner
+/// radius `radius`, filled solid or with a linear gradient.
+fn swatch_svg(w: f32, h: f32, radius: f32, fill: &SwatchFill) -> String {
+    let (defs, paint) = match fill {
+        SwatchFill::Solid(hex) => (String::new(), format!("fill=\"{hex}\"")),
+        SwatchFill::Gradient { angle, stops } => {
+            let (x1, y1, x2, y2) = angle_to_axis(*angle);
+            let els: String = stops
+                .iter()
+                .map(|s| {
+                    format!(
+                        "<stop offset=\"{:.4}\" stop-color=\"{}\" stop-opacity=\"{:.3}\"/>",
+                        s.offset, s.color, s.opacity
+                    )
+                })
+                .collect();
+            (
+                format!(
+                    "<defs><linearGradient id=\"g\" x1=\"{x1:.4}\" y1=\"{y1:.4}\" x2=\"{x2:.4}\" y2=\"{y2:.4}\">{els}</linearGradient></defs>"
+                ),
+                "fill=\"url(#g)\"".to_string(),
+            )
+        }
+    };
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w:.2}\" height=\"{h:.2}\" viewBox=\"0 0 {w:.2} {h:.2}\">{defs}<rect x=\"0\" y=\"0\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{radius:.2}\" ry=\"{radius:.2}\" {paint}/></svg>"
+    )
+}
+
+/// `{% swatch %}` — a block colour bar / chip, solid (`color="#…"`) or a
+/// linear gradient (`gradient="90deg, #…, #…"`, evenly spaced stops unless a
+/// `NN%` position is given; `transparent` allowed). Fills the available
+/// width; `height` (points, default 6) and `radius` (default 2) size it. The
+/// block analogue of the inline `{% color %}`, rendered as a synthesised SVG
+/// so gradients come for free — handy for legends, status keys, indicator
+/// bars.
+fn layout_swatch(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let height = attr_points(&tag.attributes, "height", 6.0).max(0.5);
+    let radius = attr_points(&tag.attributes, "radius", 2.0);
+    let fill = match parse_swatch_fill(&tag.attributes) {
+        Some(f) => f,
+        None => return placeholder(x, width, ctx, "[swatch: needs color or gradient]"),
+    };
+    let svg = swatch_svg(width, height, radius, &fill);
+    match usvg::Tree::from_data(svg.as_bytes(), &usvg::Options::default()) {
+        Ok(tree) => vec![Block {
+            height,
+            space_after: 6.0,
+            draw: BlockDraw::Svg {
+                tree: Arc::new(tree),
+                x,
+                width,
+                height,
+                caption: None,
+            },
+            outline: None,
+            anchor_id: None,
+            tag_role: None,
+        }],
+        Err(e) => {
+            eprintln!("warning: swatch render failed — {e}");
+            placeholder(x, width, ctx, "[swatch: render failed]")
+        }
     }
 }
 

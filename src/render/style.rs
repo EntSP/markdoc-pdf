@@ -467,6 +467,12 @@ pub struct Style {
     /// Separator between the numbered prefix and the caption text
     /// (when present). Defaults to ":".
     pub caption_separator: String,
+    /// When true, an image's `title` attribute (from `{% media title="…" /%}`
+    /// or markdown `![alt](url "title")`) is used as the caption /
+    /// accessibility text when neither an explicit `{% caption %}` nor `alt`
+    /// is present. Off by default — `title` is otherwise ignored in the PDF,
+    /// since it has no natural print rendering.
+    pub image_title_fallback: bool,
 
     // ── Tables ────────────────────────────────────────────────────────
     pub table_column_sizing: TableColumnSizing,
@@ -591,6 +597,7 @@ impl Default for Style {
             figure_caption_prefix: "Figure".to_string(),
             table_caption_prefix: "Table".to_string(),
             caption_separator: ":".to_string(),
+            image_title_fallback: false,
             table_column_sizing: TableColumnSizing::Auto,
             table_column_weights: Vec::new(),
             table_borders: TableBorders::Grid,

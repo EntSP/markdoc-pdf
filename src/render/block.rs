@@ -4219,6 +4219,15 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         }
     };
 
+    // Advisory `title` (HTML tooltip / markdown `![alt](url "title")`). Used
+    // as a caption / accessibility fallback only when the style opts in via
+    // `image_title_fallback`; otherwise it has no print rendering.
+    let title = match tag.attributes.get("title") {
+        Some(Scalar::String(s)) if !s.trim().is_empty() => Some(s.clone()),
+        _ => None,
+    };
+    let use_title = ctx.style.image_title_fallback;
+
     // Fetch the first candidate that resolves. A missing file fails the
     // open immediately (no bytes read), so probing extensions is cheap.
     let (src, bytes) = {
@@ -4289,13 +4298,11 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             let (display_w, display_h) = fit_size(px_w as f32, px_h as f32, width);
             let figure_id = ctx.next_figure_id();
             // Explicit `{% caption %}` wins over alt-derived caption.
-            let caption = ctx.pending_figure_caption.take().or_else(|| {
-                if alt.is_empty() {
-                    None
-                } else {
-                    Some(alt.clone())
-                }
-            });
+            let caption = ctx
+                .pending_figure_caption
+                .take()
+                .or_else(|| (!alt.is_empty()).then(|| alt.clone()))
+                .or_else(|| if use_title { title.clone() } else { None });
             vec![Block {
                 height: display_h,
                 space_after: ctx.style.paragraph_space_after,
@@ -4322,13 +4329,11 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                     let size = tree.size();
                     let (display_w, display_h) = fit_size(size.width(), size.height(), width);
                     let figure_id = ctx.next_figure_id();
-                    let caption = ctx.pending_figure_caption.take().or_else(|| {
-                        if alt.is_empty() {
-                            None
-                        } else {
-                            Some(alt.clone())
-                        }
-                    });
+                    let caption = ctx
+                        .pending_figure_caption
+                        .take()
+                        .or_else(|| (!alt.is_empty()).then(|| alt.clone()))
+                        .or_else(|| if use_title { title.clone() } else { None });
                     vec![Block {
                         height: display_h,
                         space_after: ctx.style.paragraph_space_after,

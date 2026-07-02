@@ -1019,6 +1019,13 @@ pub struct LayoutCtx<'a> {
     /// Current ordered/unordered list nesting depth (0 at the outermost
     /// list). Drives depth-cycled ordered numbering (`1.` → `a.` → `i.`).
     pub list_depth: usize,
+    /// Transient horizontal alignment applied to cell content — set by
+    /// `{% columns align=… %}` / `{% grid align=… %}` around their table
+    /// layout so paragraphs and images inside each cell centre / right-align
+    /// (the normal `align` column mechanism only reaches single-paragraph
+    /// cells; grid cells hold an image plus a headline plus body). `None`
+    /// everywhere else, so ordinary paragraphs and figures are unaffected.
+    pub cell_content_align: Option<parley::layout::Alignment>,
 }
 
 impl<'a> LayoutCtx<'a> {
@@ -1131,6 +1138,9 @@ fn layout_node(
 
         // `{% columns %}` — place children side by side in equal columns.
         "columns" => layout_columns(tag, x, width, ctx),
+
+        // `{% grid %}` — cells reflow into as many equal columns as fit.
+        "grid" => layout_grid(tag, x, width, ctx),
 
         // `{% float %}` — an image on one side with prose wrapping around it.
         "float" => layout_float(tag, x, width, ctx),
@@ -1505,7 +1515,8 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
         &inlines.style_ranges,
         &style,
         width,
-        ctx.style.text_align.to_parley(),
+        ctx.cell_content_align
+            .unwrap_or_else(|| ctx.style.text_align.to_parley()),
         ctx.font_cx,
         ctx.layout_cx,
     );
@@ -2711,26 +2722,21 @@ fn table_rows_source(tag: &Tag) -> &Tag {
     tag
 }
 
-/// `{% columns %}` — lay children out in equal-width columns, side by side.
-///
-/// Two authoring forms:
-///   - a markdown list, one item per column (each item may hold several
-///     blocks — e.g. an image plus a `{% caption %}`);
-///   - or blank-line-separated blocks, one block per column.
-///
-/// Implemented as a borderless, equal-width single-row table so it reuses
-/// the whole table path (column widths, row height, pagination, and — now —
-/// image cells). `gap` (points, default 16) sets the space between columns.
-fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
-    // Each column is a list of blocks. Prefer list items; otherwise each
-    // block-level child of the tag is its own column.
+/// Inner padding of a `{% columns/grid background=… %}` panel, in points.
+const PANEL_PAD: f32 = 10.0;
+
+/// Split a `{% columns %}` / `{% grid %}` tag's children into cells. Prefer a
+/// markdown list (one `li` per cell, each free to hold several blocks —
+/// e.g. an image plus a headline plus body); otherwise each block-level
+/// child of the tag is its own cell.
+fn columns_from_children(tag: &Tag) -> Vec<Vec<RenderableTreeNode>> {
     let list_children = tag.children.iter().find_map(|c| match c {
         RenderableTreeNode::Tag(t) if matches!(t.name.as_str(), "ul" | "ol") => {
             Some(t.children.as_slice())
         }
         _ => None,
     });
-    let columns: Vec<Vec<RenderableTreeNode>> = match list_children {
+    match list_children {
         Some(items) => items
             .iter()
             .filter_map(|li| match li {
@@ -2744,45 +2750,25 @@ fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
             .filter(|c| matches!(c, RenderableTreeNode::Tag(_)))
             .map(|c| vec![c.clone()])
             .collect(),
-    };
-    if columns.is_empty() {
-        return layout_children(&tag.children, x, width, ctx);
     }
-    let n = columns.len();
+}
 
-    // Space between columns (points). Realised as cell padding = gap/2, so
-    // two adjacent columns are `gap` apart.
-    let gap = tag
-        .attributes
-        .get("gap")
+/// A points value from a layout tag's numeric-or-string attribute.
+fn attr_points(attrs: &std::collections::HashMap<String, Scalar>, key: &str, default: f32) -> f32 {
+    attrs
+        .get(key)
         .and_then(|s| match s {
             Scalar::Number(v) => Some(*v as f32),
             Scalar::String(s) => s.trim().parse::<f32>().ok(),
             _ => None,
         })
-        .unwrap_or(16.0)
-        .max(0.0);
+        .unwrap_or(default)
+        .max(0.0)
+}
 
-    // Synthesise <table><tr><td>…</td>…</tr>, borderless with equal weights.
-    let tds: Vec<RenderableTreeNode> = columns
-        .into_iter()
-        .map(|blocks| {
-            RenderableTreeNode::Tag(Box::new(Tag {
-                name: "td".to_string(),
-                attributes: std::collections::HashMap::new(),
-                children: blocks,
-            }))
-        })
-        .collect();
-    let tr = RenderableTreeNode::Tag(Box::new(Tag {
-        name: "tr".to_string(),
-        attributes: std::collections::HashMap::new(),
-        children: tds,
-    }));
-    // Column widths: `widths="2 1"` or `widths=[2, 1]` gives uneven columns
-    // (relative weights). A missing/invalid value — or a count that does not
-    // match the number of columns — falls back to equal widths.
-    let widths: Option<Vec<f32>> = match tag.attributes.get("widths") {
+/// Relative column widths from a `widths="2 1"` / `widths=[2, 1]` attribute.
+fn parse_widths(attrs: &std::collections::HashMap<String, Scalar>) -> Option<Vec<f32>> {
+    match attrs.get("widths") {
         Some(Scalar::Array(items)) => Some(
             items
                 .iter()
@@ -2799,8 +2785,71 @@ fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
                 .collect(),
         ),
         _ => None,
-    };
-    let weights = widths
+    }
+}
+
+/// `align="left|center|right"` on a layout tag → parley alignment.
+fn parse_layout_align(
+    attrs: &std::collections::HashMap<String, Scalar>,
+) -> Option<parley::layout::Alignment> {
+    use parley::layout::Alignment;
+    match attrs.get("align") {
+        Some(Scalar::String(s)) => match s.trim().to_ascii_lowercase().as_str() {
+            "center" | "centre" => Some(Alignment::Center),
+            "right" | "end" => Some(Alignment::End),
+            "left" | "start" => Some(Alignment::Start),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// `background="#f9f9f9"` on a layout tag → panel fill colour.
+fn parse_layout_background(
+    attrs: &std::collections::HashMap<String, Scalar>,
+) -> Option<rgb::Color> {
+    match attrs.get("background") {
+        Some(Scalar::String(s)) => super::inline::parse_css_color(s),
+        _ => None,
+    }
+}
+
+/// Lay a single row of `cells` out as a borderless, weighted table — the
+/// shared engine behind `{% columns %}` (one row) and `{% grid %}` (each
+/// wrapped row). `weights` sets relative column widths when its length
+/// matches the cell count, else equal. `gap` (points) becomes cell padding
+/// `gap/2` so adjacent cells sit `gap` apart. `align` centres / right-aligns
+/// every cell's content — routed both through the table's per-column `align`
+/// array (for simple one-paragraph cells) and the `cell_content_align`
+/// context flag (which reaches the multi-block image+headline+body cells the
+/// column mechanism alone misses).
+fn layout_cells_row(
+    cells: Vec<Vec<RenderableTreeNode>>,
+    x: f32,
+    width: f32,
+    gap: f32,
+    weights: Option<&[f32]>,
+    align: Option<parley::layout::Alignment>,
+    ctx: &mut LayoutCtx<'_>,
+) -> Vec<Block> {
+    use parley::layout::Alignment;
+    let n = cells.len();
+    let tds: Vec<RenderableTreeNode> = cells
+        .into_iter()
+        .map(|blocks| {
+            RenderableTreeNode::Tag(Box::new(Tag {
+                name: "td".to_string(),
+                attributes: std::collections::HashMap::new(),
+                children: blocks,
+            }))
+        })
+        .collect();
+    let tr = RenderableTreeNode::Tag(Box::new(Tag {
+        name: "tr".to_string(),
+        attributes: std::collections::HashMap::new(),
+        children: tds,
+    }));
+    let weights_str = weights
         .filter(|w| w.len() == n && w.iter().all(|v| *v > 0.0))
         .map(|w| {
             w.iter()
@@ -2812,17 +2861,192 @@ fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
 
     let mut table_attrs = std::collections::HashMap::new();
     table_attrs.insert("borders".to_string(), Scalar::String("none".to_string()));
-    table_attrs.insert("column_weights".to_string(), Scalar::String(weights));
+    table_attrs.insert("column_weights".to_string(), Scalar::String(weights_str));
     table_attrs.insert(
         "cell_padding".to_string(),
         Scalar::Number((gap / 2.0) as f64),
     );
+    if let Some(a) = align {
+        let s = match a {
+            Alignment::Center => "center",
+            Alignment::End => "right",
+            _ => "left",
+        };
+        table_attrs.insert(
+            "align".to_string(),
+            Scalar::Array(vec![Scalar::String(s.to_string()); n]),
+        );
+    }
     let table = Tag {
         name: "table".to_string(),
         attributes: table_attrs,
         children: vec![tr],
     };
-    layout_table(&table, x, width, ctx)
+    let prev = ctx.cell_content_align;
+    ctx.cell_content_align = align;
+    let blocks = layout_table(&table, x, width, ctx);
+    ctx.cell_content_align = prev;
+    blocks
+}
+
+/// Wrap already-laid-out `inner` blocks in a filled background panel — the
+/// `background=` look for columns / grids. `inner` must already be positioned
+/// at `x + PANEL_PAD` with the inset width; the panel spans the full `width`.
+/// Being one `BoxedGroup`, the panel is an indivisible pagination unit.
+fn wrap_in_panel(inner: Vec<Block>, x: f32, width: f32, bg: rgb::Color, space_after: f32) -> Block {
+    let content_height: f32 = inner.iter().map(|b| b.height + b.space_after).sum::<f32>()
+        - inner.last().map(|b| b.space_after).unwrap_or(0.0);
+    Block {
+        height: content_height + 2.0 * PANEL_PAD,
+        space_after,
+        draw: BlockDraw::BoxedGroup {
+            x,
+            width,
+            background: Some(bg),
+            border: None,
+            accent_left: None,
+            accent_width: 0.0,
+            padding: PANEL_PAD,
+            children: inner,
+            icon: None,
+            top_rule: None,
+            bottom_rule: None,
+        },
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }
+}
+
+/// `{% columns %}` — lay children out in equal-width columns, side by side.
+///
+/// Two authoring forms:
+///   - a markdown list, one item per column (each item may hold several
+///     blocks — e.g. an image plus a headline plus body);
+///   - or blank-line-separated blocks, one block per column.
+///
+/// Implemented as a borderless single-row table so it reuses the whole table
+/// path (column widths, row height, pagination, image cells). `gap` (points,
+/// default 16) sets the space between columns; `widths="2 1"` makes them
+/// uneven; `align="center"` centres each cell's content; `background="#…"`
+/// paints a panel behind the row.
+fn layout_columns(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let columns = columns_from_children(tag);
+    if columns.is_empty() {
+        return layout_children(&tag.children, x, width, ctx);
+    }
+    let gap = attr_points(&tag.attributes, "gap", 16.0);
+    let align = parse_layout_align(&tag.attributes);
+    let bg = parse_layout_background(&tag.attributes);
+    let widths = parse_widths(&tag.attributes);
+
+    let (inner_x, inner_w) = match bg {
+        Some(_) => (x + PANEL_PAD, width - 2.0 * PANEL_PAD),
+        None => (x, width),
+    };
+    let rows = layout_cells_row(
+        columns,
+        inner_x,
+        inner_w,
+        gap,
+        widths.as_deref(),
+        align,
+        ctx,
+    );
+    match bg {
+        Some(c) => vec![wrap_in_panel(
+            rows,
+            x,
+            width,
+            c,
+            ctx.style.paragraph_space_after,
+        )],
+        None => rows,
+    }
+}
+
+/// Wrap `inner` in a transparent group (no fill / border / padding) purely
+/// so the paginator treats it as one indivisible unit — a `BoxedGroup` falls
+/// into `try_split`'s atomic branch, so a grid row moves whole to the next
+/// page rather than splitting a figure from its caption mid-cell.
+fn atomic_group(inner: Vec<Block>, x: f32, width: f32, space_after: f32) -> Block {
+    let height: f32 = inner.iter().map(|b| b.height + b.space_after).sum::<f32>()
+        - inner.last().map(|b| b.space_after).unwrap_or(0.0);
+    Block {
+        height,
+        space_after,
+        draw: BlockDraw::BoxedGroup {
+            x,
+            width,
+            background: None,
+            border: None,
+            accent_left: None,
+            accent_width: 0.0,
+            padding: 0.0,
+            children: inner,
+            icon: None,
+            top_rule: None,
+            bottom_rule: None,
+        },
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }
+}
+
+/// `{% grid %}` — a responsive grid: cells reflow into as many equal columns
+/// as fit at `min` points wide (default 120), wrapping into rows, exactly
+/// like CSS `repeat(auto-fill, minmax(min, 1fr))`. `gap` (default 16) spaces
+/// both columns and rows; `align` centres / right-aligns each cell's content;
+/// `background="#…"` paints a panel behind the whole grid. Every row keeps
+/// the same column count — a short final row is left-packed with its cells at
+/// the same width as the rows above, so it doesn't stretch to fill.
+fn layout_grid(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let cells = columns_from_children(tag);
+    if cells.is_empty() {
+        return layout_children(&tag.children, x, width, ctx);
+    }
+    let n = cells.len();
+    let gap = attr_points(&tag.attributes, "gap", 16.0);
+    let align = parse_layout_align(&tag.attributes);
+    let bg = parse_layout_background(&tag.attributes);
+    let min = attr_points(&tag.attributes, "min", 120.0).max(1.0);
+
+    let (inner_x, inner_w) = match bg {
+        Some(_) => (x + PANEL_PAD, width - 2.0 * PANEL_PAD),
+        None => (x, width),
+    };
+
+    // How many `min`-wide columns fit with `gap` between them:
+    //   cols·min + (cols−1)·gap ≤ inner_w  ⇒  cols ≤ (inner_w + gap)/(min + gap)
+    let cols = (((inner_w + gap) / (min + gap)).floor() as usize).clamp(1, n);
+
+    let chunks: Vec<Vec<Vec<RenderableTreeNode>>> =
+        cells.chunks(cols).map(|c| c.to_vec()).collect();
+    let n_rows = chunks.len();
+    let mut out: Vec<Block> = Vec::new();
+    for (i, mut row) in chunks.into_iter().enumerate() {
+        // Pad the final short row with empty cells so its columns keep the
+        // same width as the rows above (auto-fill, not auto-fit).
+        while row.len() < cols {
+            row.push(Vec::new());
+        }
+        let br = layout_cells_row(row, inner_x, inner_w, gap, None, align, ctx);
+        // Each row is atomic (won't split mid-cell) with `gap` below it,
+        // except the last. Rows still break between one another.
+        let space_after = if i + 1 < n_rows { gap } else { 0.0 };
+        out.push(atomic_group(br, inner_x, inner_w, space_after));
+    }
+    match bg {
+        Some(c) => vec![wrap_in_panel(
+            out,
+            x,
+            width,
+            c,
+            ctx.style.paragraph_space_after,
+        )],
+        None => out,
+    }
 }
 
 /// Return the inner `img`/`media` tag of `node`, whether it is that tag
@@ -4310,6 +4534,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             };
             let (px_w, px_h) = image.size();
             let (display_w, display_h) = fit_size(px_w as f32, px_h as f32, avail);
+            let draw_x = align_within(x, width, display_w, ctx.cell_content_align);
             let figure_id = ctx.next_figure_id();
             // Explicit `{% caption %}` wins over alt-derived caption.
             let caption = ctx
@@ -4322,7 +4547,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 space_after: ctx.style.paragraph_space_after,
                 draw: BlockDraw::Image {
                     image,
-                    x,
+                    x: draw_x,
                     width: display_w,
                     height: display_h,
                     caption,
@@ -4342,6 +4567,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 Ok(tree) => {
                     let size = tree.size();
                     let (display_w, display_h) = fit_size(size.width(), size.height(), avail);
+                    let draw_x = align_within(x, width, display_w, ctx.cell_content_align);
                     let figure_id = ctx.next_figure_id();
                     let caption = ctx
                         .pending_figure_caption
@@ -4353,7 +4579,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                         space_after: ctx.style.paragraph_space_after,
                         draw: BlockDraw::Svg {
                             tree: Arc::new(tree),
-                            x,
+                            x: draw_x,
                             width: display_w,
                             height: display_h,
                             caption,
@@ -4375,6 +4601,19 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             );
             placeholder(x, width, ctx, &format!("[unknown media format: {src}]"))
         }
+    }
+}
+
+/// Shift `x` so a `content`-wide box sits centre / right within an
+/// `avail`-wide slot, per the transient cell alignment. `None` / `Start`
+/// leave it at the left edge; anything wider than the slot stays put.
+fn align_within(x: f32, avail: f32, content: f32, align: Option<parley::layout::Alignment>) -> f32 {
+    use parley::layout::Alignment;
+    let slack = (avail - content).max(0.0);
+    match align {
+        Some(Alignment::Center) => x + slack * 0.5,
+        Some(Alignment::End) => x + slack,
+        _ => x,
     }
 }
 

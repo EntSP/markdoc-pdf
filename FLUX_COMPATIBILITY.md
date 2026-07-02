@@ -70,9 +70,12 @@ all three for PDF metadata, so they stay regardless.
 markdoc-pdf also renders several layout / form tags that are **not** part of
 the pr-1 spec (the web / app renderers realise them with CSS). They're safe
 in a PDF-targeted source, and each has a worked example under `examples/`:
-`{% columns %}` (side-by-side), `{% float %}` (text wrapping an image, incl.
-inline-anchored magazine floats), `{% input %}` (print form field, PDF/A-safe),
-`{% color %}` / `{% c %}` (inline colour), and `{% list %}` (custom marker).
+`{% columns %}` (side-by-side, with optional `align` centring and a
+`background` panel), `{% grid %}` (cells reflowing into as many equal columns
+as fit — the print analogue of CSS `repeat(auto-fill, minmax(min, 1fr))`),
+`{% float %}` (text wrapping an image, incl. inline-anchored magazine floats),
+`{% input %}` (print form field, PDF/A-safe), `{% color %}` / `{% c %}`
+(inline colour), and `{% list %}` (custom marker).
 
 ## ⚠️ Known gaps — fixable with author edits
 

@@ -8,7 +8,8 @@ title: Colour swatches and indicator bars
 block sibling of the inline `\{% color %}`. Fill it solid with `color`, or
 with a linear gradient via `gradient` (`"[Ndeg,] stop, stop, …"` — stops are
 evenly spaced unless one carries an `NN%` position, and `transparent` is
-allowed). `height` (points, default 6) and `radius` (default 2) size it.
+allowed). `height` (points, default 6) and `radius` (default 2) size it. For a
+small colour dot *inline*, reach for `\{% chip /%}` (below).
 
 ## Solid and gradient bars
 
@@ -27,6 +28,18 @@ A taller vertical fade (`180deg`, `height=12`):
 A fade to transparent at 25 % (`#ff0000, transparent 25%`):
 
 {% swatch gradient="90deg, #ff0000, transparent 25%" /%}
+
+## Inline chips
+
+`\{% chip /%}` drops a small colour dot into running text — the inline sibling
+of `\{% swatch %}`. Fill it with `color`; `shape="square"` swaps the dot for a
+square. It flows with the words: {% chip color="#ff0000" /%} stopped,
+{% chip color="#00a000" /%} ready, {% chip color="#00b0b0" /%} driving, and a
+{% chip color="#fd7e14" shape="square" /%} square variant.
+
+It doubles as a compact inline legend — {% chip color="#ff0000" /%} Red ·
+{% chip color="#00a000" /%} Green · {% chip color="#0000ff" /%} Blue — where a
+full bar would be too heavy.
 
 ## Indicator key — swatch inside a grid
 
@@ -47,29 +60,29 @@ examples (no assets are needed here):
 
   **Green**
 
-  {% color value="#6c757d" %}Ready for job{% /color %}
+  {% color value="#6c757d" %}Ready state{% /color %}
 
 * {% swatch color="#00fafa" /%}
 
   **Cyan**
 
-  {% color value="#6c757d" %}Drives to destination{% /color %}
+  {% color value="#6c757d" %}Drives to goal{% /color %}
 
 * {% swatch gradient="90deg, #fd7e14, #ffffff, #fd7e14" /%}
 
   **Wavering orange**
 
-  {% color value="#6c757d" %}Startup signal before PC is active{% /color %}
+  {% color value="#6c757d" %}Startup signal, before system is ready{% /color %}
 
 * {% swatch gradient="90deg, #0000ff, #ffffff, #0000ff" /%}
 
   **Wavering blue**
 
-  {% color value="#6c757d" %}Mapping{% /color %}
+  {% color value="#6c757d" %}Exploring{% /color %}
 
 * {% swatch gradient="90deg, #ff0000, transparent 25%" /%}
 
-  **Battery percentage**
+  **Battery state of charge**
 
-  {% color value="#6c757d" %}Charging at charging station{% /color %}
+  {% color value="#6c757d" %}Charging at charger{% /color %}
 {% /grid %}

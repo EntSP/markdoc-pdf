@@ -73,7 +73,8 @@ Things to notice:
   optional language for syntax highlighting), tables.
 - **Markdoc tags** look like `{% tag %}…{% /tag %}`. The most useful
   for writers right now: `{% callout %}`, `{% caption %}`, `{% media src="…" /%}`,
-  `{% footnote %}`. See *Markdoc tags* below.
+  `{% footnote %}`, and the layout / form tags `{% columns %}`,
+  `{% float %}` and `{% input %}`. See *Markdoc tags* below.
 
 ## 3. Pick a style
 
@@ -211,6 +212,24 @@ For details see the {% tagref id="config" %} chapter.
 `{% tagref %}` becomes a clickable link in the PDF. Every heading
 also gets an auto-assigned anchor (`__heading_<n>`) so the ToC and
 List of Figures entries are linkable.
+
+### `{% columns %}` and `{% float %}` — side-by-side and wrapped layout
+
+`{% columns %}` places its children in side-by-side columns (equal, or
+uneven via `widths="2 1"`); `{% float %}` floats an image to one side with
+the following content wrapping around it — and with inline
+`{% media side="…" /%}` markers becomes a magazine-style wrap around several
+images. Worked examples: [`examples/columns.mdoc`](examples/columns.mdoc)
+and [`examples/float.mdoc`](examples/float.mdoc).
+
+### `{% input %}` — print form fields
+
+A labelled, ruled form field for printable forms — `type` (`text`,
+`number`, `email`, `date`, `checkbox`, …), `required`, `min`/`max`,
+`minlength`/`maxlength`. It renders as pure graphics (label + box sized by
+`maxlength`), so it stays PDF/A-safe; the constraints are printed as a hint
+for whoever fills it in by hand. See
+[`examples/form.mdoc`](examples/form.mdoc).
 
 ## Where to next
 

@@ -53,16 +53,26 @@ all three for PDF metadata, so they stay regardless.
 | `{% tagref "X" /%}` | ✅ Works | Primary shorthand on tagref too |
 | `{% tagref tag="X" %}` … `{% /tagref %}` | ⚠️ Avoid | Block form not used by Flux; renderer expects self-closing |
 | `{% callout type="warning" %}` … `{% /callout %}` | ✅ Works | All four pr-1 types: caution / warning / note / info |
-| `{% media src="…" /%}` | ✅ Works | Plus alt/caption/kind attributes |
+| `{% media src="…" /%}` | ✅ Works | Plus `alt` / `caption` / `kind` / `side` / `width`; `{% img %}` is an alias |
+| `{% media id="…" /%}` | ✅ Works | Arca asset id. Scriptor rewrites it to a concrete `src` upstream; locally markdoc-pdf finds `<id>.<ext>` under `--assets-root` |
 | `{% caption %}` … `{% /caption %}` | ✅ Works | Auto-numbered Figure N / Table N |
 | `{% footnote %}` … `{% /footnote %}` | ✅ Works | Per-page pool with separator rule |
 | `{% if $var %}` … `{% /if %}` | ✅ Works | Undefined `$var` evaluates to falsy → branch dropped |
 | `{% if A %}…{% else $B /%}…{% else /%}…{% /if %}` | ✅ Works | Else-if chain; bare `{% else /%}` is the unconditional fallback |
-| `{% partial file="…" /%}` | ✅ Works | Recursive expansion against the input file's parent directory; cycles detected |
+| `{% partial file="…" /%}` | ✅ Works | Recursive, cycle-detected; `file=` resolves against the input file's directory — relative `../` and absolute paths reach other dirs |
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |
 | Frontmatter variable interpolation `{% $markdoc.frontmatter.version %}` | ✅ Works | |
+
+## Renderer extensions — beyond the Flux spec
+
+markdoc-pdf also renders several layout / form tags that are **not** part of
+the pr-1 spec (the web / app renderers realise them with CSS). They're safe
+in a PDF-targeted source, and each has a worked example under `examples/`:
+`{% columns %}` (side-by-side), `{% float %}` (text wrapping an image, incl.
+inline-anchored magazine floats), `{% input %}` (print form field, PDF/A-safe),
+`{% color %}` / `{% c %}` (inline colour), and `{% list %}` (custom marker).
 
 ## ⚠️ Known gaps — fixable with author edits
 

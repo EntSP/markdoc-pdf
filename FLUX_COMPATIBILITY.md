@@ -75,9 +75,9 @@ in a PDF-targeted source, and each has a worked example under `examples/`:
 as fit — the print analogue of CSS `repeat(auto-fill, minmax(min, 1fr))`),
 `{% float %}` (text wrapping an image, incl. inline-anchored magazine floats),
 `{% input %}` (print form field, PDF/A-safe), `{% color %}` / `{% c %}`
-(inline colour), `{% swatch %}` (block colour bar / chip — solid or linear
-gradient, the block sibling of `{% color %}`), and `{% list %}` (custom
-marker).
+(inline colour), `{% swatch %}` / `{% chip %}` (a block colour bar and its
+inline colour dot — solid, or a linear gradient for the bar), and
+`{% list %}` (custom marker).
 
 ## ⚠️ Known gaps — fixable with author edits
 

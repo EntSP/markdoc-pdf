@@ -363,6 +363,38 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                         }
                         continue;
                     }
+                    "chip" => {
+                        // Inline colour chip — the inline sibling of the
+                        // block `{% swatch %}`:
+                        //   {% chip color="#ff0000" /%} Red
+                        //   {% chip color="#0a0" shape="square" /%} Ready
+                        // Self-closing, so it injects a filled marker glyph
+                        // (● default, ■ for `shape="square"`) tinted with the
+                        // colour. Solid only — gradients are the block bar's
+                        // job. A missing / unparsable colour leaves the glyph
+                        // in the default text colour.
+                        let glyph = match t.attributes.get("shape") {
+                            Some(Scalar::String(s)) if s.trim().eq_ignore_ascii_case("square") => {
+                                '■'
+                            }
+                            _ => '●',
+                        };
+                        let color = match t.attributes.get("color") {
+                            Some(Scalar::String(s)) => parse_css_color(s),
+                            _ => None,
+                        };
+                        let start = out.text.len();
+                        out.text.push(glyph);
+                        let end = out.text.len();
+                        if let Some(c) = color {
+                            out.style_ranges.push(InlineRange {
+                                start,
+                                end,
+                                prop: InlineProp::Color(c),
+                            });
+                        }
+                        continue;
+                    }
                     "color" | "c" => {
                         // Inline colour span:
                         //   {% color value="#d21e1e" %}red text{% /color %}

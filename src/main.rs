@@ -139,12 +139,18 @@ fn run(args: &Args) -> Result<(), AppError> {
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
 
     let doc = resolve_crossrefs(&doc);
-    // Build-time `--var` values are exposed as top-level `$key` for
-    // conditionals and tag attributes (parse-time text interpolation got
-    // them via `parse_with_variables` above).
-    let ctx = cli_vars.iter().fold(Context::new(), |c, (k, v)| {
-        c.with_variable(k.clone(), v.clone())
-    });
+    // Seed the evaluation context with the document's own frontmatter, so
+    // conditionals and tag attributes can read `$markdoc.frontmatter.*`
+    // (e.g. `{% qr value=$markdoc.frontmatter.documentNumber /%}`). Then
+    // overlay build-time `--var` values as top-level `$key` (parse-time text
+    // interpolation already got them via `parse_with_variables` above).
+    let base_ctx = match doc.attributes.get("frontmatter") {
+        Some(fm) => Context::new().with_frontmatter(fm.clone()),
+        None => Context::new(),
+    };
+    let ctx = cli_vars
+        .iter()
+        .fold(base_ctx, |c, (k, v)| c.with_variable(k.clone(), v.clone()));
     let doc = evaluate_conditionals(&doc, &ctx)
         .map_err(|e| AppError::Conditionals(args.input.clone(), e.to_string()))?;
     let rendered = transform_with_context(&doc, &Config::default(), &ctx)

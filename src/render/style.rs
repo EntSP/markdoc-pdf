@@ -1169,6 +1169,54 @@ pub struct PageDecorationStyle {
     /// If true, the first page is rendered without header/footer (useful
     /// when the first page is a title or cover page).
     pub skip_first_page: bool,
+    /// Optional QR-code stamp on the last content page — the printed-guide
+    /// pattern where production scans a small code (encoding the document
+    /// number) when packing. Drawn in the bottom-right corner above its
+    /// human-readable label. See [`LastPageQr`].
+    pub last_page_qr: Option<LastPageQr>,
+}
+
+/// A small QR code stamped in the bottom-right corner of the last page that
+/// carries content, above a human-readable label. `value` and `label` are
+/// templates (default `"{documentNumber}"`, resolved against the document's
+/// frontmatter and the usual `{page}`/`{title}`/… tokens); a `value` that
+/// doesn't resolve (no such field) skips the stamp entirely, and an empty
+/// resolved `label` hides the caption.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct LastPageQr {
+    /// Template for the data encoded in the code.
+    pub value: String,
+    /// Template for the caption drawn beneath the code (empty hides it).
+    pub label: String,
+    /// Rendered side length of the code, in points.
+    pub size: f32,
+    /// Error-correction level: `low` | `medium` | `quartile` | `high`.
+    pub ecl: String,
+    /// Gap from the page's right edge to the code's right edge, in points.
+    pub margin_right: f32,
+    /// Gap from the page's bottom edge to the caption's bottom, in points —
+    /// set this larger than the footer band so the stamp clears it.
+    pub margin_bottom: f32,
+    /// Module (foreground) colour; the field stays white.
+    pub color: ColorRgb,
+    /// Font size of the caption.
+    pub label_font_size: f32,
+}
+
+impl Default for LastPageQr {
+    fn default() -> Self {
+        Self {
+            value: "{documentNumber}".to_string(),
+            label: "{documentNumber}".to_string(),
+            size: 54.0,
+            ecl: "medium".to_string(),
+            margin_right: 40.0,
+            margin_bottom: 48.0,
+            color: ColorRgb::new(0, 0, 0),
+            label_font_size: 8.0,
+        }
+    }
 }
 
 /// A masthead drawn at the top of every page: a logo (with an optional

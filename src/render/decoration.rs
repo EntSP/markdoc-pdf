@@ -123,6 +123,106 @@ pub fn emit_footer(
     }
 }
 
+/// Stamp a QR code encoding the resolved `spec.value` in the bottom-right
+/// corner of the page, above a `spec.label` caption. Silently does nothing
+/// when the value template leaves an unresolved `{token}` (e.g. the document
+/// has no `documentNumber`) or resolves to empty — so it is safe to enable
+/// document-wide. Tagged as an artifact: it is production metadata, not
+/// reading-order content.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_last_page_qr(
+    surface: &mut krilla::surface::Surface<'_>,
+    style: &Style,
+    spec: &super::style::LastPageQr,
+    tctx: &TemplateContext<'_>,
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
+    font_cache: &mut HashMap<u64, Font>,
+    tagged: bool,
+) {
+    if spec.size <= 0.0 {
+        return;
+    }
+    let value = tctx.substitute(&spec.value);
+    let value = value.trim();
+    if value.is_empty() || value.contains('{') {
+        return; // unresolved field or empty — nothing to stamp
+    }
+    let dark = format!(
+        "#{:02x}{:02x}{:02x}",
+        spec.color.r, spec.color.g, spec.color.b
+    );
+    let Some(svg) = super::block::qr_svg_string(value, &spec.ecl, 4, &dark, "#ffffff") else {
+        return; // value too long to encode
+    };
+    let Ok(tree) = SvgTree::from_data(svg.as_bytes(), &usvg::Options::default()) else {
+        return;
+    };
+    let Some(qr_size) = Size::from_wh(spec.size, spec.size) else {
+        return;
+    };
+
+    // Optional human-readable caption below the code.
+    let label = tctx.substitute(&spec.label);
+    let label = label.trim();
+    let has_label = !label.is_empty() && !label.contains('{');
+    let label_gap = if has_label { 3.0 } else { 0.0 };
+    let label_h = if has_label {
+        spec.label_font_size * 1.25
+    } else {
+        0.0
+    };
+
+    // Anchored so the caption's bottom sits `margin_bottom` above the page
+    // edge and the code's right edge sits `margin_right` from it.
+    let qr_x = style.page_width - spec.margin_right - spec.size;
+    let qr_y = style.page_height - spec.margin_bottom - label_h - label_gap - spec.size;
+
+    if tagged {
+        surface.start_tagged(ContentTag::Artifact(Artifact::with_kind(
+            ArtifactType::Other,
+        )));
+    }
+    surface.push_transform(&Transform::from_translate(qr_x, qr_y));
+    surface.draw_svg(&tree, qr_size, SvgSettings::default());
+    surface.pop();
+
+    if has_label {
+        let text_style = TextStyle {
+            font_size: spec.label_font_size,
+            font_weight: 400.0,
+            line_height: 1.2,
+            color: spec.color.into(),
+            font_families: default_families(),
+            italic: false,
+        };
+        let layout = build_layout_aligned(
+            label,
+            &[],
+            &text_style,
+            spec.size,
+            Alignment::Center,
+            font_cx,
+            layout_cx,
+        );
+        let label_y = qr_y + spec.size + label_gap;
+        let lines = layout.lines().count().min(1);
+        emit_layout(
+            surface,
+            &layout,
+            label,
+            qr_x,
+            label_y,
+            font_cache,
+            0..lines,
+            0.0,
+        );
+    }
+    if tagged {
+        surface.end_tagged();
+    }
+}
+
 /// Draw the notice masthead at the top of a page, starting at `band_top`.
 /// Layout: logo top-left with a subtitle beneath it and a wrapping
 /// disclaimer below that; on the right, a label right-aligned just above

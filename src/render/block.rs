@@ -3290,6 +3290,27 @@ fn qr_svg(code: &qrcodegen::QrCode, quiet: i32, dark: &str, light: &str) -> Stri
     )
 }
 
+/// Encode `value` at error-correction level `ecl` (low | medium | quartile |
+/// high) and return the SVG for the code, or `None` if the value is too long
+/// to fit any QR version. Shared by the `{% qr %}` tag and the style-driven
+/// last-page stamp.
+pub(super) fn qr_svg_string(
+    value: &str,
+    ecl: &str,
+    quiet: i32,
+    dark: &str,
+    light: &str,
+) -> Option<String> {
+    let ecl = match ecl.trim().to_ascii_lowercase().as_str() {
+        "low" | "l" => qrcodegen::QrCodeEcc::Low,
+        "quartile" | "q" => qrcodegen::QrCodeEcc::Quartile,
+        "high" | "h" => qrcodegen::QrCodeEcc::High,
+        _ => qrcodegen::QrCodeEcc::Medium,
+    };
+    let code = qrcodegen::QrCode::encode_text(value, ecl).ok()?;
+    Some(qr_svg(&code, quiet.max(0), dark, light))
+}
+
 /// `{% qr %}` — a QR code from `value`. `size` (points, default 72) sets the
 /// square's side (capped at the available width); `ecl` (low | medium |
 /// quartile | high, default medium) the error-correction level; `color` /
@@ -3313,17 +3334,8 @@ fn layout_qr(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Bloc
         _ => return placeholder(x, width, ctx, "[qr: missing value]"),
     };
     let ecl = match tag.attributes.get("ecl") {
-        Some(Scalar::String(s)) => match s.trim().to_ascii_lowercase().as_str() {
-            "low" | "l" => qrcodegen::QrCodeEcc::Low,
-            "quartile" | "q" => qrcodegen::QrCodeEcc::Quartile,
-            "high" | "h" => qrcodegen::QrCodeEcc::High,
-            _ => qrcodegen::QrCodeEcc::Medium,
-        },
-        _ => qrcodegen::QrCodeEcc::Medium,
-    };
-    let code = match qrcodegen::QrCode::encode_text(&value, ecl) {
-        Ok(c) => c,
-        Err(_) => return placeholder(x, width, ctx, "[qr: value too long to encode]"),
+        Some(Scalar::String(s)) => s.clone(),
+        _ => "medium".to_string(),
     };
     let quiet = (attr_points(&tag.attributes, "quiet_zone", 4.0).round() as i32).max(0);
     let hex = |key: &str, fallback: &str| {
@@ -3335,12 +3347,16 @@ fn layout_qr(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Bloc
             })
             .unwrap_or_else(|| fallback.to_string())
     };
-    let svg = qr_svg(
-        &code,
+    let svg = match qr_svg_string(
+        &value,
+        &ecl,
         quiet,
         &hex("color", "#000000"),
         &hex("background", "#ffffff"),
-    );
+    ) {
+        Some(s) => s,
+        None => return placeholder(x, width, ctx, "[qr: value too long to encode]"),
+    };
     let size = attr_points(&tag.attributes, "size", 72.0).clamp(8.0, width.max(8.0));
     let align = parse_layout_align(&tag.attributes).or(ctx.cell_content_align);
     let draw_x = align_within(x, width, size, align);

@@ -369,6 +369,10 @@ pub fn render_pdf_with(
     }
     let total_pages = pages.len();
 
+    // Index of the last page that carries body content — where a last-page
+    // QR stamp lands (never a blank duplex-padding page).
+    let last_content_idx = pages.iter().rposition(|(b, _)| !b.is_empty());
+
     // 3. Emit. Each page collects link annotations and outline points
     //    locally; outline points carry their page index so the final
     //    outline tree can be built once all pages are emitted. We also
@@ -463,20 +467,20 @@ pub fn render_pdf_with(
                 }
             }
 
+            let tctx = TemplateContext {
+                page: page_idx + 1,
+                total: total_pages,
+                title: &ctx.title,
+                chapter: &current_chapter,
+                section: &current_section,
+                date: &date_str,
+                vars: &ctx.vars,
+            };
             // Page-level decoration: skip on first page if configured. The
             // duplex-padding page is decorated like any other (header /
             // footer); it just has no body.
             let draw_decoration = !(style.page_decoration.skip_first_page && page_idx == 0);
             if draw_decoration {
-                let tctx = TemplateContext {
-                    page: page_idx + 1,
-                    total: total_pages,
-                    title: &ctx.title,
-                    chapter: &current_chapter,
-                    section: &current_section,
-                    date: &date_str,
-                    vars: &ctx.vars,
-                };
                 if let Some(header) = &style.page_decoration.header {
                     decoration::emit_header(
                         &mut surface,
@@ -520,6 +524,22 @@ pub fn render_pdf_with(
                         tagging_enabled,
                     );
                 }
+            }
+            // Last-page QR stamp — bottom-right corner of the final content
+            // page, drawn regardless of the header/footer skip logic.
+            if Some(page_idx) == last_content_idx
+                && let Some(qr) = &style.page_decoration.last_page_qr
+            {
+                decoration::emit_last_page_qr(
+                    &mut surface,
+                    style,
+                    qr,
+                    &tctx,
+                    &mut font_cx,
+                    &mut layout_cx,
+                    &mut font_cache,
+                    tagging_enabled,
+                );
             }
             surface.finish();
         }

@@ -356,6 +356,7 @@ empty label/icon, `label_centered = false`):
 | `page_decoration.header` | optional table | unset | See below. |
 | `page_decoration.footer` | optional table | unset | Same fields as header. |
 | `page_decoration.banner` | optional table | unset | Rich top masthead — see [Notice banner](#notice-banner). |
+| `page_decoration.last_page_qr` | optional table | unset | QR stamp in the last content page's bottom-right corner — see [Last-page QR](#last-page-qr). |
 
 `[page_decoration.header]` / `[page_decoration.footer]` (present only if you
 define the table):
@@ -376,6 +377,28 @@ define the table):
 | `…header.logo_left` / `logo_center` / `logo_right` | optional table (logo) | unset | A logo replacing that slot's text — see [Logo spec](#logo-spec). |
 | `…header.even` | optional table | unset | Even/verso-page slot overrides (`left`/`center`/`right`, each `""` = inherit). |
 | `…header.per_chapter` | table (map: h1-text → slots) | `{}` | Per-h1-chapter slot overrides, keyed by exact h1 text. |
+
+#### Last-page QR
+
+`[page_decoration.last_page_qr]` stamps a small QR code in the bottom-right
+corner of the last page that carries content (never a blank duplex-padding
+page), above a human-readable caption. `value` / `label` are templates (default
+`"{documentNumber}"`) resolved against frontmatter and the usual
+`{page}`/`{title}`/… tokens; if `value` leaves an unresolved `{token}` (the
+field isn't set) the stamp is skipped, and an empty resolved `label` hides the
+caption. Set `margin_bottom` larger than the footer band so the stamp clears
+it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `…last_page_qr.value` | string (template) | `"{documentNumber}"` | Data encoded in the code. |
+| `…last_page_qr.label` | string (template) | `"{documentNumber}"` | Caption below the code; empty hides it. |
+| `…last_page_qr.size` | number (pt) | `54.0` | Side length of the code. |
+| `…last_page_qr.ecl` | string | `"medium"` | Error correction: `low` / `medium` / `quartile` / `high`. |
+| `…last_page_qr.margin_right` | number (pt) | `40.0` | Gap from the page's right edge. |
+| `…last_page_qr.margin_bottom` | number (pt) | `48.0` | Gap from the page's bottom edge. |
+| `…last_page_qr.color` | colour | `0,0,0` | Module colour (the field stays white). |
+| `…last_page_qr.label_font_size` | number (pt) | `8.0` | Caption font size. |
 
 #### Logo spec
 

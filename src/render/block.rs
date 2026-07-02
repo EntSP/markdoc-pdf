@@ -4228,6 +4228,20 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     };
     let use_title = ctx.style.image_title_fallback;
 
+    // `size` keyword scales the display width relative to the space available
+    // here (a column, a table cell, …): small = 50 %, medium = 75 %, large =
+    // 100 % (the default). `fit_size` never upscales, so a small source image
+    // still renders at its natural size. (Explicit `width` is a float-only
+    // knob; `size` is the general one.)
+    let avail = match tag.attributes.get("size") {
+        Some(Scalar::String(s)) => match s.trim() {
+            "small" => width * 0.5,
+            "medium" => width * 0.75,
+            _ => width, // "large" or anything unrecognised → full width
+        },
+        _ => width,
+    };
+
     // Fetch the first candidate that resolves. A missing file fails the
     // open immediately (no bytes read), so probing extensions is cheap.
     let (src, bytes) = {
@@ -4295,7 +4309,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 }
             };
             let (px_w, px_h) = image.size();
-            let (display_w, display_h) = fit_size(px_w as f32, px_h as f32, width);
+            let (display_w, display_h) = fit_size(px_w as f32, px_h as f32, avail);
             let figure_id = ctx.next_figure_id();
             // Explicit `{% caption %}` wins over alt-derived caption.
             let caption = ctx
@@ -4327,7 +4341,7 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             match usvg::Tree::from_data(&bytes, &opts) {
                 Ok(tree) => {
                     let size = tree.size();
-                    let (display_w, display_h) = fit_size(size.width(), size.height(), width);
+                    let (display_w, display_h) = fit_size(size.width(), size.height(), avail);
                     let figure_id = ctx.next_figure_id();
                     let caption = ctx
                         .pending_figure_caption

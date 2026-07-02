@@ -82,8 +82,24 @@ These substitute into header / footer / banner / cover-page template
 strings at render time:
 
 `{page}`, `{total}`, `{title}`, `{chapter}` (most recent h1), `{section}`,
-`{date}`, `{language}`, plus any frontmatter field by name (e.g.
-`{version}`). A template whose variables all resolve to empty is skipped.
+`{date}`, and `{copyright_years}` — plus any frontmatter field by name (e.g.
+`{version}`, `{language}`). A template whose variables all resolve to empty
+is skipped; an unknown `{name}` is left literal so typos are visible.
+
+**`{copyright_years}`** is a derived value for legal footers: a single year
+(`2026`) when the document's `firstReleaseDate` year equals the current year
+(or is absent), or an en-dash span (`2024–2026`) when the release year is
+earlier. It uses the *current* year at render time, so — unlike a hardcoded
+year — it updates on each re-render.
+
+```toml
+[page_decoration.footer]
+left = "Copyright © {copyright_years} by ACME LLC."
+```
+
+renders `Copyright © 2026 by ACME LLC.` for a same-year release, or
+`Copyright © 2024–2026 by ACME LLC.` once the current year moves past the
+`firstReleaseDate`.
 
 ### Page geometry
 

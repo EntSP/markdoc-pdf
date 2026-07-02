@@ -13,10 +13,13 @@
 #   └────────────────────────────────────────────────────────────────────┘
 #
 # Notes:
-# - {page}, {total}, {title}, {chapter}, {section}, {date} are
-#   substituted at render time. The copyright year is hardcoded — there
-#   is intentionally no {year} placeholder, so legal text stays
-#   reproducible across re-renders of the same release.
+# - {page}, {total}, {title}, {chapter}, {section}, {date} and
+#   {copyright_years} are substituted at render time. This footer
+#   hardcodes the year so the legal line stays reproducible across
+#   re-renders of the same release. Swap in {copyright_years} (the
+#   commented `left` alternative below) to auto-span the release year to
+#   the current year (e.g. "2024–2026") — that makes the line depend on
+#   when it is rendered.
 # - `skip_first_page = false` because copyright/confidentiality notices
 #   typically appear on every page including the cover. Flip to `true`
 #   if you have a cover page that already carries its own legal block.
@@ -41,6 +44,8 @@ skip_first_page = false
 [page_decoration.footer]
 # ── three slots, all in use ─────────────────────────────────────────
 left   = "© 2026 Acme Corp. All rights reserved."
+# Auto-spanning alternative — release year (firstReleaseDate) → current year:
+# left = "© {copyright_years} Acme Corp. All rights reserved."
 center = "Confidential — {title}"
 right  = "Page {page} of {total}"
 

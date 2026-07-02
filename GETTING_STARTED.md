@@ -180,14 +180,16 @@ path:
 In production, Scriptor fetches the asset and rewrites the reference to a
 concrete `src` (e.g. `src="file:///…/0a02bb82….webp"`) before rendering.
 While Arca isn't wired up, markdoc-pdf resolves the id **locally**: put the
-file, named `<id>.<ext>`, under your `--assets-root`, and the renderer
-finds it (it probes `.webp` / `.png` / `.jpg` / `.jpeg` / `.gif` / `.svg`,
-then the bare id; the actual format is detected from the file contents, so
-a wrong extension still works). A missing id degrades to the usual
-placeholder plus a `warning: media unavailable: …` line — so a writer can
-drop the downloaded assets into one folder and preview a real Adeptus
-document without changing its `id=` references. `{% img %}` is an alias of
-`{% media %}`, so both spellings resolve identically.
+file, named `<id>.<ext>`, anywhere under your `--assets-root` — at the top
+or in a sub-folder — and the renderer finds it. It first checks the root
+for `<id>` with each known extension (`.webp` / `.png` / `.jpg` / `.jpeg` /
+`.gif` / `.svg`, then the bare id); failing that, it searches sub-folders
+by file stem. The actual format is detected from the file contents, so a
+wrong extension still works. A missing id degrades to the usual placeholder
+plus a `warning: media unavailable: …` line — so a writer can drop the
+downloaded assets into a folder (nested however they arrive) and preview a
+real Adeptus document without changing its `id=` references. `{% img %}` is
+an alias of `{% media %}`, so both spellings resolve identically.
 
 ### `{% footnote %}` — inline footnotes
 

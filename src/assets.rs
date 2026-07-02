@@ -11,8 +11,8 @@
 
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -36,6 +36,16 @@ pub trait AssetResolver: Send + Sync {
     /// absolute path, an `http://` / `https://` URL, an `arca://` reference,
     /// or anything else a caller-supplied resolver knows how to handle.
     fn fetch(&self, uri: &str) -> Result<Vec<u8>, AssetError>;
+
+    /// Resolve a bare asset `id` (no path, no extension — e.g. an Arca
+    /// UUID) to a URI that [`fetch`](Self::fetch) can load. A filesystem
+    /// resolver searches its root recursively for a file whose stem matches;
+    /// resolvers that can't map an id return `None` (the default). Used as a
+    /// fallback for `{% media id="…" /%}` when the id isn't a file sitting
+    /// directly in the asset root.
+    fn resolve_id(&self, _id: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Resolver that returns `NotFound` for every URI. The default when the
@@ -55,11 +65,18 @@ impl AssetResolver for NullAssetResolver {
 /// honored. Other schemes (`http`, `https`, `arca`, …) error.
 pub struct FsAssetResolver {
     pub root: PathBuf,
+    /// Lazily-built index of `<stem>` → path (relative to `root`) for every
+    /// image file anywhere under `root`, so `{% media id="…" /%}` resolves
+    /// even when the asset sits in a sub-folder. Built on first `resolve_id`.
+    id_index: OnceLock<HashMap<String, PathBuf>>,
 }
 
 impl FsAssetResolver {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            id_index: OnceLock::new(),
+        }
     }
 }
 
@@ -85,6 +102,50 @@ impl AssetResolver for FsAssetResolver {
             source: e,
         })
     }
+
+    fn resolve_id(&self, id: &str) -> Option<String> {
+        let index = self.id_index.get_or_init(|| build_id_index(&self.root));
+        index.get(id).map(|rel| rel.to_string_lossy().into_owned())
+    }
+}
+
+/// Walk `root` recursively and index image files by their stem (the file
+/// name without extension), keyed to the path relative to `root` — so the
+/// result feeds straight back into [`FsAssetResolver::fetch`]. First match
+/// wins on a stem collision (rare for UUID-named assets). Symlinked
+/// directories are not followed, so the walk cannot loop.
+fn build_id_index(root: &Path) -> HashMap<String, PathBuf> {
+    const IMAGE_EXTS: &[&str] = &["webp", "png", "jpg", "jpeg", "gif", "svg"];
+    let mut map: HashMap<String, PathBuf> = HashMap::new();
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            let path = entry.path();
+            if ft.is_dir() {
+                stack.push(path);
+            } else if ft.is_file() {
+                let is_image = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| IMAGE_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+                    .unwrap_or(false);
+                if is_image
+                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                    && let Ok(rel) = path.strip_prefix(root)
+                {
+                    map.entry(stem.to_string())
+                        .or_insert_with(|| rel.to_path_buf());
+                }
+            }
+        }
+    }
+    map
 }
 
 /// HTTP/HTTPS asset resolver. Performs a synchronous GET and returns
@@ -279,6 +340,10 @@ impl AssetResolver for CompositeAssetResolver {
         }
         Err(last_err.unwrap_or_else(|| AssetError::NotFound(uri.to_string())))
     }
+
+    fn resolve_id(&self, id: &str) -> Option<String> {
+        self.resolvers.iter().find_map(|r| r.resolve_id(id))
+    }
 }
 
 /// Caches successful fetches by URI so repeated references to the same
@@ -406,6 +471,10 @@ impl AssetResolver for CachingAssetResolver {
         }
         Ok(bytes)
     }
+
+    fn resolve_id(&self, id: &str) -> Option<String> {
+        self.inner.resolve_id(id)
+    }
 }
 
 /// Sniff a binary blob's media format from magic bytes.
@@ -461,6 +530,29 @@ mod tests {
         let r = FsAssetResolver::new("/tmp");
         let err = r.fetch("https://example.com/x.png").unwrap_err();
         assert!(matches!(err, AssetError::UnsupportedScheme { .. }));
+    }
+
+    #[test]
+    fn fs_resolver_resolves_id_in_subdirectory() {
+        use std::fs;
+        let base = std::env::temp_dir().join("mdpdf-id-resolve-test");
+        let _ = fs::remove_dir_all(&base);
+        let nested = base.join("a/b");
+        fs::create_dir_all(&nested).unwrap();
+        let id = "0a02bb82-1a68-4c5c-883f-406361e1235e";
+        fs::write(nested.join(format!("{id}.png")), b"\x89PNG-bytes").unwrap();
+
+        let r = FsAssetResolver::new(&base);
+        // The id resolves to a path (relative to the root) even though the
+        // file is two levels down...
+        let resolved = r.resolve_id(id).expect("id resolved from a sub-folder");
+        assert!(resolved.ends_with(&format!("{id}.png")), "got {resolved}");
+        // ...and that path fetches back through the same resolver.
+        assert_eq!(r.fetch(&resolved).unwrap(), b"\x89PNG-bytes");
+        // An unknown id yields None.
+        assert!(r.resolve_id("no-such-id").is_none());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

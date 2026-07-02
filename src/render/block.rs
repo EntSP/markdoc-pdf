@@ -4233,6 +4233,15 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 Err(e) => last_err = Some(e.to_string()),
             }
         }
+        // Flat probe missed. If this was an `id`, search the assets tree
+        // recursively for a file whose stem matches (nested asset layouts).
+        if found.is_none()
+            && let Some(id) = &id_attr
+            && let Some(path) = ctx.assets.resolve_id(id.as_str())
+            && let Ok(b) = ctx.assets.fetch(&path)
+        {
+            found = Some((path, b));
+        }
         match found {
             Some(fb) => fb,
             None => {

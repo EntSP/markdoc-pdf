@@ -1,0 +1,75 @@
+---
+title: Colour swatches and indicator bars
+---
+
+# Colour swatches
+
+`\{% swatch /%}` draws a block colour bar that fills the available width — the
+block sibling of the inline `\{% color %}`. Fill it solid with `color`, or
+with a linear gradient via `gradient` (`"[Ndeg,] stop, stop, …"` — stops are
+evenly spaced unless one carries an `NN%` position, and `transparent` is
+allowed). `height` (points, default 6) and `radius` (default 2) size it.
+
+## Solid and gradient bars
+
+A solid bar:
+
+{% swatch color="#ff0000" /%}
+
+A symmetric three-stop gradient (`90deg, #fd7e14, #ffffff, #fd7e14`):
+
+{% swatch gradient="90deg, #fd7e14, #ffffff, #fd7e14" /%}
+
+A taller vertical fade (`180deg`, `height=12`):
+
+{% swatch gradient="180deg, #fd7e14, #fff3e0" height=12 /%}
+
+A fade to transparent at 25 % (`#ff0000, transparent 25%`):
+
+{% swatch gradient="90deg, #ff0000, transparent 25%" /%}
+
+## Indicator key — swatch inside a grid
+
+Put a `\{% swatch /%}` above a bold title and a short grey description in each
+`\{% grid %}` cell, and the reflowing grid becomes a status / indicator key.
+Solid colours and gradients (a "wavering" light shown as a gradient) sit side
+by side. Render with `--assets-root examples` for consistency with the other
+examples (no assets are needed here):
+
+{% grid min=130 gap=16 %}
+* {% swatch color="#ff0000" /%}
+
+  **Red**
+
+  {% color value="#6c757d" %}Emergency or Protective stop{% /color %}
+
+* {% swatch color="#00fa00" /%}
+
+  **Green**
+
+  {% color value="#6c757d" %}Ready for job{% /color %}
+
+* {% swatch color="#00fafa" /%}
+
+  **Cyan**
+
+  {% color value="#6c757d" %}Drives to destination{% /color %}
+
+* {% swatch gradient="90deg, #fd7e14, #ffffff, #fd7e14" /%}
+
+  **Wavering orange**
+
+  {% color value="#6c757d" %}Startup signal before PC is active{% /color %}
+
+* {% swatch gradient="90deg, #0000ff, #ffffff, #0000ff" /%}
+
+  **Wavering blue**
+
+  {% color value="#6c757d" %}Mapping{% /color %}
+
+* {% swatch gradient="90deg, #ff0000, transparent 25%" /%}
+
+  **Battery percentage**
+
+  {% color value="#6c757d" %}Charging at charging station{% /color %}
+{% /grid %}

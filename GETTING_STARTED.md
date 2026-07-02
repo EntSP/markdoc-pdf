@@ -218,11 +218,14 @@ List of Figures entries are linkable.
 ### `{% columns %}` and `{% float %}` — side-by-side and wrapped layout
 
 `{% columns %}` places its children in side-by-side columns (equal, or
-uneven via `widths="2 1"`); `{% float %}` floats an image to one side with
-the following content wrapping around it — and with inline
+uneven via `widths="2 1"`), optionally centred (`align="center"`) on a
+`background` panel; `{% grid %}` reflows the same cells into as many equal
+columns as fit, wrapping into rows; `{% float %}` floats an image to one
+side with the following content wrapping around it — and with inline
 `{% media side="…" /%}` markers becomes a magazine-style wrap around several
-images. Worked examples: [`examples/columns.mdoc`](examples/columns.mdoc)
-and [`examples/float.mdoc`](examples/float.mdoc).
+images. Worked examples:
+[`examples/columns-and-grid.mdoc`](examples/columns-and-grid.mdoc) and
+[`examples/float.mdoc`](examples/float.mdoc).
 
 ### `{% input %}` — print form fields
 

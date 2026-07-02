@@ -1,14 +1,17 @@
 ---
-title: Side-by-side columns
+title: Columns and grids
 ---
 
-# Side-by-side columns
+# Columns and grids
 
 `\{% columns %}` places its children in equal-width columns, side by side.
 Each column is either a list item (`*`) or a blank-line-separated block. The
 `gap` attribute (points) sets the spacing, and `widths` (e.g. `widths="2 1"`
-or `widths=[2, 1]`) makes them uneven. Render with `--assets-root examples`
-so the swatch images resolve.
+or `widths=[2, 1]`) makes them uneven. `align="center"` centres each column's
+content, and `background="#…"` paints a panel behind the row. For a set of
+cells that should *reflow* into as many columns as fit — wrapping into rows —
+reach for `\{% grid %}` (at the end). Render with `--assets-root examples` so
+the swatch images resolve.
 
 ## Two images — list form
 
@@ -74,3 +77,71 @@ text that wraps down *one* side of an image and then widens beneath it, use
   stream, the two sides can carry different commentary at once — a figure
   annotated on the left and the right at the same time.
 {% /columns %}
+
+## A figure panel — background and centered content
+
+`align="center"` centres each column's content — the image and the text
+beneath it — and `background="#…"` fills a panel behind the whole row. Give a
+cell an image, a bold headline, and a body paragraph (blank-line separated),
+and it reads as a captioned figure:
+
+{% columns gap=20 align="center" background="#f2f3f5" %}
+* ![](figure.svg)
+
+  **Indicator released**
+
+  If the input pins deliver 24 V, the unit can operate.
+
+* ![](figure.svg)
+
+  **Indicator engaged**
+
+  When both pins deliver 0 V, the unit stops and the housing locks.
+{% /columns %}
+
+## Responsive grid
+
+`\{% grid %}` takes the same cells as `\{% columns %}` but *reflows* them into
+as many equal columns as fit at `min` points wide (default 120), wrapping into
+rows — the print analogue of CSS `repeat(auto-fill, minmax(min, 1fr))`. `gap`
+spaces both columns and rows; `align` and `background` work as above. A short
+final row is left-packed, its cells the same width as the rows above. Here six
+cells settle into a three-column grid:
+
+{% grid min=110 gap=16 align="center" %}
+* ![](swatch.png)
+
+  **Red**
+
+  Emergency or protective stop
+
+* ![](swatch.png)
+
+  **Green**
+
+  Ready for job
+
+* ![](swatch.png)
+
+  **Cyan**
+
+  Driving to destination
+
+* ![](swatch.png)
+
+  **Purple**
+
+  Goal or path blocked
+
+* ![](swatch.png)
+
+  **Blue**
+
+  Manual drive
+
+* ![](swatch.png)
+
+  **Orange**
+
+  Mission paused
+{% /grid %}

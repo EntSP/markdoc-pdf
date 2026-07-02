@@ -54,6 +54,37 @@ including a `list` tag with a custom marker.
 * Text in a table
 {% /table %}
 
+## Images in cells
+
+Images work in cells too — reference them by `src` or Arca `id`, and use the
+`size` preset (`small` = 50 %, `medium` = 75 %, `large` = 100 % of the cell
+width) to keep thumbnails in check. A cell can mix an image with a nested
+list, like a parts table (render with `--assets-root examples`):
+
+{% table %}
+* Image
+* Part
+* Fits
+* Order
+---
+* {% media src="swatch.png" size="small" /%}
+* NMC Battery Rev. 10
+* ACME2, ACME4
+* 000001
+---
+* {% media src="sample.jpg" size="small" /%}
+* NMC Battery Rev. 3
+*
+  * ACME1, ACME3, ACME5
+  * All ACME6 units
+* 000002
+---
+*
+* LFP Battery Rev. 5
+*
+*
+{% /table %}
+
 ## Column alignment
 
 An `align` annotation on a header cell aligns the whole column; an `align` on

@@ -35,3 +35,4 @@ thiserror  = "2.0"
 time       = { version = "0.3", default-features = false, features = ["std", "local-offset", "parsing", "macros"] }
 ureq       = { version = "3", default-features = false, features = ["rustls"] }
 hyphenation = { version = "0.8", default-features = false, features = ["embed_en-us"] }
+qrcodegen = "1.8.0"

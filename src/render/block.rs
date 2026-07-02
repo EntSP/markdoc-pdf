@@ -1145,6 +1145,9 @@ fn layout_node(
         // `{% swatch %}` — a block colour bar / chip (solid or gradient).
         "swatch" => layout_swatch(tag, x, width, ctx),
 
+        // `{% qr %}` — a QR code from `value`.
+        "qr" => layout_qr(tag, x, width, ctx),
+
         // `{% float %}` — an image on one side with prose wrapping around it.
         "float" => layout_float(tag, x, width, ctx),
 
@@ -3261,6 +3264,104 @@ fn layout_swatch(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<
         Err(e) => {
             eprintln!("warning: swatch render failed — {e}");
             placeholder(x, width, ctx, "[swatch: render failed]")
+        }
+    }
+}
+
+/// Build an SVG for a QR `code`: a `light` field with every dark module a
+/// unit cell in `dark`, plus a `quiet`-module margin. One `<path>` collects
+/// all dark cells, so it stays compact and scales as crisp vector.
+fn qr_svg(code: &qrcodegen::QrCode, quiet: i32, dark: &str, light: &str) -> String {
+    use std::fmt::Write as _;
+    let n = code.size();
+    let dim = n + 2 * quiet;
+    let mut path = String::new();
+    for y in 0..n {
+        for x in 0..n {
+            if code.get_module(x, y) {
+                let _ = write!(path, "M{} {}h1v1h-1z", x + quiet, y + quiet);
+            }
+        }
+    }
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{dim}\" height=\"{dim}\" viewBox=\"0 0 {dim} {dim}\">\
+         <rect width=\"{dim}\" height=\"{dim}\" fill=\"{light}\"/>\
+         <path d=\"{path}\" fill=\"{dark}\"/></svg>"
+    )
+}
+
+/// `{% qr %}` — a QR code from `value`. `size` (points, default 72) sets the
+/// square's side (capped at the available width); `ecl` (low | medium |
+/// quartile | high, default medium) the error-correction level; `color` /
+/// `background` the module / field colours; `quiet_zone` (modules, default 4)
+/// the margin; `align` (left | center | right) the horizontal placement.
+/// Rendered as a synthesised SVG, so it stays crisp vector at any scale —
+/// e.g. a small document-number code on a printed guide's last page.
+fn layout_qr(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    // `value` is usually a string, but a frontmatter integer such as
+    // `documentNumber` arrives as a Number (YAML ints are f64) — encode it
+    // without a spurious decimal.
+    let value = match tag.attributes.get("value") {
+        Some(Scalar::String(s)) if !s.trim().is_empty() => s.clone(),
+        Some(Scalar::Number(n)) if n.is_finite() => {
+            if n.fract() == 0.0 {
+                format!("{}", *n as i64)
+            } else {
+                n.to_string()
+            }
+        }
+        _ => return placeholder(x, width, ctx, "[qr: missing value]"),
+    };
+    let ecl = match tag.attributes.get("ecl") {
+        Some(Scalar::String(s)) => match s.trim().to_ascii_lowercase().as_str() {
+            "low" | "l" => qrcodegen::QrCodeEcc::Low,
+            "quartile" | "q" => qrcodegen::QrCodeEcc::Quartile,
+            "high" | "h" => qrcodegen::QrCodeEcc::High,
+            _ => qrcodegen::QrCodeEcc::Medium,
+        },
+        _ => qrcodegen::QrCodeEcc::Medium,
+    };
+    let code = match qrcodegen::QrCode::encode_text(&value, ecl) {
+        Ok(c) => c,
+        Err(_) => return placeholder(x, width, ctx, "[qr: value too long to encode]"),
+    };
+    let quiet = (attr_points(&tag.attributes, "quiet_zone", 4.0).round() as i32).max(0);
+    let hex = |key: &str, fallback: &str| {
+        tag.attributes
+            .get(key)
+            .and_then(|v| match v {
+                Scalar::String(s) => css_hex(s),
+                _ => None,
+            })
+            .unwrap_or_else(|| fallback.to_string())
+    };
+    let svg = qr_svg(
+        &code,
+        quiet,
+        &hex("color", "#000000"),
+        &hex("background", "#ffffff"),
+    );
+    let size = attr_points(&tag.attributes, "size", 72.0).clamp(8.0, width.max(8.0));
+    let align = parse_layout_align(&tag.attributes).or(ctx.cell_content_align);
+    let draw_x = align_within(x, width, size, align);
+    match usvg::Tree::from_data(svg.as_bytes(), &usvg::Options::default()) {
+        Ok(tree) => vec![Block {
+            height: size,
+            space_after: ctx.style.paragraph_space_after,
+            draw: BlockDraw::Svg {
+                tree: Arc::new(tree),
+                x: draw_x,
+                width: size,
+                height: size,
+                caption: None,
+            },
+            outline: None,
+            anchor_id: None,
+            tag_role: None,
+        }],
+        Err(e) => {
+            eprintln!("warning: qr render failed — {e}");
+            placeholder(x, width, ctx, "[qr: render failed]")
         }
     }
 }

@@ -1,0 +1,37 @@
+---
+title: QR codes
+documentNumber: 600123
+---
+
+# QR codes
+
+`\{% qr /%}` renders a QR code from `value` — a URL, a document number, or any
+text. `size` (points, default 72) sets the square's side, `ecl` the
+error-correction level (`low` | `medium` | `quartile` | `high`), `color` /
+`background` the module / field colours, `quiet_zone` the margin (in modules,
+default 4), and `align` (`left` | `center` | `right`) the placement. It is
+drawn as vector, so it stays crisp at any size.
+
+## A document number
+
+Encode a document number so production can scan the printed guide when
+packing. `value` reads straight from frontmatter — `documentNumber: 600123`
+here becomes the code:
+
+{% qr value=$markdoc.frontmatter.documentNumber size=64 /%}
+
+For a code alone on the final page, precede it with `\{% pagebreak /%}`.
+
+## A URL, centered and robust
+
+Higher error correction (`ecl="high"`) tolerates smudging and folds — worth it
+for print. Centered on the page:
+
+{% qr value="https://docs.example.com/manuals/600123" size=120 ecl="high" align="center" /%}
+
+## Tinted
+
+`color` and `background` theme the code; keep the contrast high so it still
+scans:
+
+{% qr value="PACK-600123" size=64 color="#1b3a5b" /%}

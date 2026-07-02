@@ -63,7 +63,7 @@ all three for PDF metadata, so they stay regardless.
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |
-| Frontmatter variable interpolation `{% $markdoc.frontmatter.version %}` | ✅ Works | |
+| Frontmatter variable interpolation `{% $markdoc.frontmatter.version %}` | ✅ Works | Also resolves as a **tag attribute value**, e.g. `{% qr value=$markdoc.frontmatter.documentNumber /%}` and in `{% if %}` predicates |
 
 ## Renderer extensions — beyond the Flux spec
 
@@ -76,8 +76,9 @@ as fit — the print analogue of CSS `repeat(auto-fill, minmax(min, 1fr))`),
 `{% float %}` (text wrapping an image, incl. inline-anchored magazine floats),
 `{% input %}` (print form field, PDF/A-safe), `{% color %}` / `{% c %}`
 (inline colour), `{% swatch %}` / `{% chip %}` (a block colour bar and its
-inline colour dot — solid, or a linear gradient for the bar), and
-`{% list %}` (custom marker).
+inline colour dot — solid, or a linear gradient for the bar), `{% qr %}` (a
+QR code from any value — a URL, arbitrary text, or the frontmatter document
+number), and `{% list %}` (custom marker).
 
 ## ⚠️ Known gaps — fixable with author edits
 

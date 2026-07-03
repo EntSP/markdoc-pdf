@@ -7,10 +7,10 @@
 use clap::Parser;
 use flux_types::FluxFrontmatter;
 use markdoc::{
-    Context, evaluate_conditionals, parse_with_variables,
+    Context, Node, evaluate_conditionals, parse_with_variables,
     partials::{FsPartialResolver, expand_partials},
     resolve_crossrefs, transform_with_context,
-    types::{Config, Scalar},
+    types::{Config, NodeType, Scalar},
 };
 use markdoc_pdf::assets::FsAssetResolver;
 use markdoc_pdf::dates;
@@ -126,6 +126,11 @@ fn run(args: &Args) -> Result<(), AppError> {
     let doc = parse_with_variables(&source, None, &cli_vars)
         .map_err(|e| AppError::Parse(args.input.clone(), e.to_string()))?;
 
+    // Stitch a composed work together: if the root frontmatter carries a
+    // Flux `sections` manifest, append a `{% partial %}` per section file so
+    // the partial expansion below includes them all as one book.
+    let doc = expand_sections(doc, &args.input);
+
     // Expand `{% partial file="..." /%}` references against the input
     // file's parent directory. Partials' own `{% partial %}` tags are
     // resolved recursively; cycles are detected and reported.
@@ -240,6 +245,59 @@ fn run(args: &Args) -> Result<(), AppError> {
         args.input.display()
     );
     Ok(())
+}
+
+/// Stitch a composed work together from its `sections` manifest. When the
+/// root document's frontmatter carries a Flux `sections` list — an ordered
+/// tree of `[section, [subsection, …]]` file paths — append a
+/// `{% partial %}` for each, in order (section then its subsections), after
+/// the root's own content (the copyright page, ToC, …). The partial
+/// expansion that follows includes each file, dropping its frontmatter so
+/// the root's work-level frontmatter governs the whole book, with the usual
+/// recursion + cycle detection. A document with no `sections` (the common
+/// case) is returned unchanged.
+fn expand_sections(mut doc: Node, input: &Path) -> Node {
+    let sections = match FluxFrontmatter::from_node(&doc) {
+        Ok(fm) => fm.sections,
+        Err(_) => return doc, // no / unparsable frontmatter — nothing to stitch
+    };
+    if sections.is_empty() {
+        return doc;
+    }
+    let base = input.parent().unwrap_or_else(|| Path::new("."));
+    for section in &sections {
+        for path in std::iter::once(&section.path).chain(section.subsections.iter()) {
+            let file = section_partial_path(path, base);
+            let mut attrs = HashMap::new();
+            attrs.insert("file".to_string(), Scalar::String(file));
+            doc.push(Node::new(
+                NodeType::Tag,
+                attrs,
+                Vec::new(),
+                Some("partial".to_string()),
+            ));
+        }
+    }
+    doc
+}
+
+/// Resolve a `sections` path to a `{% partial %}` `file=` value relative to
+/// the manifest's directory: strip a leading `/` (the Flux example paths are
+/// document-root-relative, not filesystem-absolute) and, when the path has
+/// no extension, probe `.mdoc` then `.md`, defaulting to `.mdoc` so a
+/// genuinely missing file surfaces as the standard partial-not-found error.
+fn section_partial_path(raw: &str, base: &Path) -> String {
+    let rel = raw.trim().trim_start_matches('/');
+    if Path::new(rel).extension().is_some() {
+        return rel.to_string();
+    }
+    for ext in ["mdoc", "md"] {
+        let cand = format!("{rel}.{ext}");
+        if base.join(&cand).is_file() {
+            return cand;
+        }
+    }
+    format!("{rel}.mdoc")
 }
 
 /// Surface every scalar frontmatter field as a template variable keyed
@@ -410,6 +468,71 @@ mod tests {
         assert_eq!(
             scalar_to_template_string(&Scalar::Object(std::collections::HashMap::new())),
             None
+        );
+    }
+
+    #[test]
+    fn section_paths_default_to_mdoc_and_keep_explicit_ext() {
+        let base = Path::new("/no/such/dir");
+        // Extensionless → `.mdoc`; a leading `/` is stripped (doc-relative).
+        assert_eq!(section_partial_path("intro", base), "intro.mdoc");
+        assert_eq!(
+            section_partial_path("/manual/safety/x", base),
+            "manual/safety/x.mdoc"
+        );
+        // An explicit extension is preserved.
+        assert_eq!(section_partial_path("a/b.md", base), "a/b.md");
+    }
+
+    #[test]
+    fn expand_sections_appends_one_partial_per_section_and_subsection() {
+        let src = r#"---
+title: Book
+sections:
+- - "intro"
+  - []
+- - "safety/overview"
+  - - "safety/messages"
+    - "safety/precautions"
+---
+
+# Copyright
+"#;
+        let doc = markdoc::parser::parse(src, None).unwrap();
+        let before = doc.children.len();
+        let out = expand_sections(doc, Path::new("book.mdoc"));
+        let partials: Vec<&str> = out
+            .children
+            .iter()
+            .filter(|c| c.tag.as_deref() == Some("partial"))
+            .filter_map(|c| match c.attributes.get("file") {
+                Some(Scalar::String(s)) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect();
+        // section, then its subsections, in order — four files total.
+        assert_eq!(
+            partials,
+            [
+                "intro.mdoc",
+                "safety/overview.mdoc",
+                "safety/messages.mdoc",
+                "safety/precautions.mdoc",
+            ]
+        );
+        assert_eq!(out.children.len(), before + 4);
+    }
+
+    #[test]
+    fn expand_sections_noop_without_manifest() {
+        let doc = markdoc::parser::parse("---\ntitle: Plain\n---\n\n# Body\n", None).unwrap();
+        let before = doc.children.len();
+        let out = expand_sections(doc, Path::new("d.mdoc"));
+        assert_eq!(out.children.len(), before);
+        assert!(
+            out.children
+                .iter()
+                .all(|c| c.tag.as_deref() != Some("partial"))
         );
     }
 }

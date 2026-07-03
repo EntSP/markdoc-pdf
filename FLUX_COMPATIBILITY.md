@@ -60,6 +60,7 @@ all three for PDF metadata, so they stay regardless.
 | `{% if $var %}` … `{% /if %}` | ✅ Works | Undefined `$var` evaluates to falsy → branch dropped |
 | `{% if A %}…{% else $B /%}…{% else /%}…{% /if %}` | ✅ Works | Else-if chain; bare `{% else /%}` is the unconditional fallback |
 | `{% partial file="…" /%}` | ✅ Works | Recursive, cycle-detected; `file=` resolves against the input file's directory — relative `../` and absolute paths reach other dirs |
+| Manual `sections:` manifest | ✅ Works | Stitches the listed section / subsection files into one book, in order (section then its subsections), via the partial machinery — sub-file frontmatter is dropped, so the root's work-level frontmatter (title / version / documentNumber) governs the whole. Paths resolve against the root file's dir; extensionless entries get `.mdoc`/`.md` |
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |

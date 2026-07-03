@@ -236,6 +236,38 @@ A labelled, ruled form field for printable forms — `type` (`text`,
 for whoever fills it in by hand. See
 [`examples/form.mdoc`](examples/form.mdoc).
 
+## Composing a book from `sections`
+
+A large manual doesn't have to live in one file. Give the root document a
+Flux `sections` manifest in its frontmatter — an ordered tree of
+`[section, [subsection, …]]` file paths — and each file is stitched into one
+book, in order, when you render the root:
+
+```yaml
+---
+title: Acme Robot
+documentNumber: 4100237
+sections:
+- - "intro"           # → intro.mdoc
+  - []
+- - "safety/overview" # → safety/overview.mdoc
+  - - "safety/messages"
+    - "safety/precautions"
+- - "operation"
+---
+
+# Copyright {% tag numbered="false" /%}
+{% toc /%}
+```
+
+Paths resolve against the root file's directory (a leading `/` is treated as
+root-relative, not absolute; extensionless paths get `.mdoc`/`.md`). Each
+section file's own frontmatter is dropped, so the root's title / version /
+document number govern the whole book — and heading numbering, the ToC, the
+running header, the footer, and the last-page QR all span the composed
+whole. It's built on the same inclusion machinery as `{% partial %}`
+(recursive, cycle-detected).
+
 ## Where to next
 
 - The full set of style knobs (margins, fonts, colours, headers,

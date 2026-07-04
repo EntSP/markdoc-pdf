@@ -9,7 +9,7 @@ use flux_types::FluxFrontmatter;
 use markdoc::{
     Context, Node, evaluate_conditionals, parse_with_variables,
     partials::{FsPartialResolver, expand_partials},
-    resolve_crossrefs, transform_with_context,
+    resolve_crossrefs, resolve_footnotes, transform_with_context,
     types::{Config, NodeType, Scalar},
 };
 use markdoc_pdf::assets::FsAssetResolver;
@@ -142,6 +142,11 @@ fn run(args: &Args) -> Result<(), AppError> {
     let partial_resolver = FsPartialResolver::new(partial_root);
     let doc = expand_partials(&doc, &partial_resolver)
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
+
+    // Normalise CommonMark footnotes (`[^id]` references + `[^id]:` bodies)
+    // into `{% footnote %}` tags — after partial / section expansion so a
+    // reference and its definition in different files still resolve.
+    let doc = resolve_footnotes(&doc);
 
     let doc = resolve_crossrefs(&doc);
     // Seed the evaluation context with the document's own frontmatter, so

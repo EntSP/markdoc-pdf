@@ -1281,6 +1281,56 @@ fn build_caption_block(
     }
 }
 
+/// A visible caption block from a plain string — the value of a
+/// `{% media caption="…" /%}` attribute (no inline markup). Mirrors
+/// [`build_caption_block`]'s small-italic look and `caption_color`.
+fn caption_block_from_str(text: &str, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Block {
+    let color = ctx
+        .style
+        .caption_color
+        .map(|c| c.into())
+        .unwrap_or_else(|| ctx.style.blockquote_text_color.into());
+    let style = TextStyle {
+        font_size: ctx.style.body_font_size * 0.92,
+        font_weight: 400.0,
+        line_height: ctx.style.body_line_height,
+        color,
+        font_families: ctx.body_families,
+        italic: true,
+    };
+    let layout = build_layout(text, &[], &style, width, ctx.font_cx, ctx.layout_cx);
+    let slice = TextSlice::whole(layout, text.to_string(), Vec::new(), x);
+    let height = slice.height();
+    Block {
+        height,
+        space_after: ctx.style.paragraph_space_after * 0.5,
+        draw: BlockDraw::Text(slice),
+        outline: None,
+        anchor_id: None,
+        tag_role: None,
+    }
+}
+
+/// Attach a `visible_caption` (from a `{% media caption="…" /%}` attribute)
+/// beneath or above a laid-out media `image` block, per the style's
+/// `caption_position`. `None` returns the image alone.
+fn finish_media(
+    image: Block,
+    visible_caption: Option<String>,
+    x: f32,
+    width: f32,
+    ctx: &mut LayoutCtx<'_>,
+) -> Vec<Block> {
+    let Some(text) = visible_caption else {
+        return vec![image];
+    };
+    let cap = caption_block_from_str(&text, x, width, ctx);
+    match ctx.style.caption_position {
+        super::style::CaptionPosition::Above => vec![cap, image],
+        super::style::CaptionPosition::Below => vec![image, cap],
+    }
+}
+
 /// If `children[i]` is a caption tag (or a paragraph wrapping one) and
 /// `children[i+1]` is a captionable target (table or figure, possibly
 /// wrapped in a `<p>`), return the caption's collected inline text,
@@ -4785,6 +4835,17 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     };
     let use_title = ctx.style.image_title_fallback;
 
+    // An explicit `caption="…"` attribute draws a visible caption block (like
+    // a preceding `{% caption %}` tag) and also feeds the List of Figures /
+    // the PDF/UA figure label. `had_caption_tag` records whether a
+    // `{% caption %}` tag already produced a visible caption for this media
+    // (handled in `layout_children`), so `caption=` doesn't double it.
+    let caption_attr = match tag.attributes.get("caption") {
+        Some(Scalar::String(s)) if !s.trim().is_empty() => Some(s.clone()),
+        _ => None,
+    };
+    let had_caption_tag = ctx.pending_figure_caption.is_some();
+
     // `size` keyword scales the display width relative to the space available
     // here (a column, a table cell, …): small = 50 %, medium = 75 %, large =
     // 100 % (the default). `fit_size` never upscales, so a small source image
@@ -4869,13 +4930,14 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
             let (display_w, display_h) = fit_size(px_w as f32, px_h as f32, avail);
             let draw_x = align_within(x, width, display_w, ctx.cell_content_align);
             let figure_id = ctx.next_figure_id();
-            // Explicit `{% caption %}` wins over alt-derived caption.
+            // Explicit `{% caption %}` wins over `caption=`, then alt / title.
             let caption = ctx
                 .pending_figure_caption
                 .take()
+                .or_else(|| caption_attr.clone())
                 .or_else(|| (!alt.is_empty()).then(|| alt.clone()))
                 .or_else(|| if use_title { title.clone() } else { None });
-            vec![Block {
+            let block = Block {
                 height: display_h,
                 space_after: ctx.style.paragraph_space_after,
                 draw: BlockDraw::Image {
@@ -4888,7 +4950,9 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 outline: None,
                 anchor_id: Some(format!("__figure_{figure_id}")),
                 tag_role: None,
-            }]
+            };
+            let visible = if had_caption_tag { None } else { caption_attr };
+            finish_media(block, visible, x, width, ctx)
         }
         MediaFormat::Svg => {
             // Build a usvg::Tree. The tree carries its own font database;
@@ -4905,9 +4969,10 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                     let caption = ctx
                         .pending_figure_caption
                         .take()
+                        .or_else(|| caption_attr.clone())
                         .or_else(|| (!alt.is_empty()).then(|| alt.clone()))
                         .or_else(|| if use_title { title.clone() } else { None });
-                    vec![Block {
+                    let block = Block {
                         height: display_h,
                         space_after: ctx.style.paragraph_space_after,
                         draw: BlockDraw::Svg {
@@ -4920,7 +4985,9 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                         outline: None,
                         anchor_id: Some(format!("__figure_{figure_id}")),
                         tag_role: None,
-                    }]
+                    };
+                    let visible = if had_caption_tag { None } else { caption_attr };
+                    finish_media(block, visible, x, width, ctx)
                 }
                 Err(e) => {
                     eprintln!("warning: svg parse failed: {src} — {e}");

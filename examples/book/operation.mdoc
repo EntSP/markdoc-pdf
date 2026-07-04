@@ -28,7 +28,8 @@ A centred figure grid — `{% columns %}` with `align` and a panel
 
 ## Configuration
 
-The unit reads its parameters from a `config.toml` file at boot.{% footnote %}A malformed configuration file falls back to safe defaults and logs a warning.{% /footnote %} For example:
+The unit reads its parameters from a `config.toml` file at boot.[^cfg] For
+example:
 
 ```toml
 [unit]
@@ -36,6 +37,9 @@ name       = "acme-01"
 max_speed  = 1.5   # m/s
 payload_kg = 250
 ```
+
+[^cfg]: A malformed configuration file falls back to safe defaults and logs a
+warning.
 
 ## Docking
 

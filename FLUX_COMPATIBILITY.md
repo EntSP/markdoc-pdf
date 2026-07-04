@@ -53,10 +53,11 @@ all three for PDF metadata, so they stay regardless.
 | `{% tagref "X" /%}` | ✅ Works | Primary shorthand on tagref too |
 | `{% tagref tag="X" %}` … `{% /tagref %}` | ⚠️ Avoid | Block form not used by Flux; renderer expects self-closing |
 | `{% callout type="warning" %}` … `{% /callout %}` | ✅ Works | All four pr-1 types: caution / warning / note / info |
-| `{% media src="…" /%}` | ✅ Works | Plus `alt` / `title` / `caption` / `kind` / `side` / `size` / `width`; `{% img %}` is an alias. `size` scales the image to `small` / `medium` / `large` (50 / 75 / 100 % of the available width). `title` acts as a caption / alt fallback only when the style sets `image_title_fallback` |
+| `{% media src="…" /%}` | ✅ Works | Plus `alt` / `title` / `caption` / `kind` / `side` / `size` / `width`; `{% img %}` is an alias. `size` scales the image to `small` / `medium` / `large` (50 / 75 / 100 % of the available width). A `caption="…"` attribute draws a visible caption (positioned per `caption_position`), like a `{% caption %}` tag. `title` acts as a caption / alt fallback only when the style sets `image_title_fallback` |
 | `{% media id="…" /%}` | ✅ Works | Arca asset id. Scriptor rewrites it to a concrete `src` upstream; locally markdoc-pdf finds `<id>.<ext>` under `--assets-root` |
 | `{% caption %}` … `{% /caption %}` | ✅ Works | Auto-numbered Figure N / Table N |
 | `{% footnote %}` … `{% /footnote %}` | ✅ Works | Per-page pool with separator rule |
+| CommonMark footnotes `text[^id]` + `[^id]: body` | ✅ Works | Normalised to `{% footnote %}` (reference → tag carrying the definition body; definitions removed), so both syntaxes render identically |
 | `{% if $var %}` … `{% /if %}` | ✅ Works | Undefined `$var` evaluates to falsy → branch dropped |
 | `{% if A %}…{% else $B /%}…{% else /%}…{% /if %}` | ✅ Works | Else-if chain; bare `{% else /%}` is the unconditional fallback |
 | `{% partial file="…" /%}` | ✅ Works | Recursive, cycle-detected; `file=` resolves against the input file's directory — relative `../` and absolute paths reach other dirs |

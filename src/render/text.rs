@@ -54,9 +54,17 @@ pub fn default_families() -> &'static [&'static str] {
     // for anything else (arrows, mathematical operators, …), and
     // emoji at the tail.
     &[
+        // Primary Latin / Greek / Cyrillic face.
         "Noto Sans",
-        "Noto Sans Arabic",
-        "Noto Sans Devanagari",
+        // Script-specific families for codepoints the primary face doesn't
+        // cover. Each is simply skipped when not installed (fontique ignores
+        // unknown families), so naming a script whose font is absent is
+        // harmless — the text just falls through to the next family.
+        "Noto Sans Arabic",     // Arabic (RTL; parley shapes + reorders)
+        "Noto Sans Hebrew",     // Hebrew (RTL)
+        "Droid Sans Hebrew",    // Hebrew fallback shipped on some distros
+        "Noto Sans Devanagari", // Hindi / Marathi / Sanskrit
+        "Noto Sans Thai",
         // Arrow / mathematical-operator glyphs. Bundled on most Linux
         // distros via `google-noto-sans-symbols2-fonts` / `-math-`;
         // ignored on systems where they're absent (fontique just
@@ -71,6 +79,17 @@ pub fn default_families() -> &'static [&'static str] {
         "Liberation Sans",
         "Arial Unicode MS",
         "Segoe UI Symbol",
+        // CJK — deliberately after the symbol / broad-Unicode fallbacks. The
+        // pan-CJK fonts greedily cover punctuation, geometric shapes and
+        // fullwidth Latin, so listing them earlier would pull ASCII, bullets
+        // and arrows into fullwidth CJK forms. Placed here they only catch
+        // codepoints nothing else covers — Han, kana, hangul. One family
+        // suffices for all three languages; the regional variants differ
+        // mainly in preferred Han shapes (Linux: `google-noto-sans-cjk-fonts`).
+        "Noto Sans CJK JP",
+        "Noto Sans CJK KR",
+        "Noto Sans CJK SC",
+        "Noto Sans CJK TC",
         "Noto Color Emoji",
     ]
 }

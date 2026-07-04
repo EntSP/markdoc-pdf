@@ -1,0 +1,67 @@
+---
+title: World scripts
+documentNumber: 700042
+---
+
+# World scripts
+
+markdoc-pdf shapes and renders many writing systems, not only Latin. Fonts are
+chosen **per character**: the renderer walks a fallback list and uses the first
+family that covers each codepoint, so one paragraph can mix scripts freely.
+Right-to-left runs (Arabic, Hebrew) are shaped — joining letters into their
+contextual forms — and reordered automatically.
+
+The scripts below need their Noto fonts installed (`Noto Sans`,
+`Noto Sans Arabic`, `Noto Sans Hebrew`, `Noto Sans CJK`, `Noto Sans Devanagari`,
+`Noto Sans Thai`); any that are missing simply fall through to the next family.
+
+## Greetings
+
+| Language | Script | Greeting |
+| --- | --- | --- |
+| Chinese (Simplified) | Han | 你好，世界 |
+| Japanese | Kana + Kanji | こんにちは、世界 |
+| Korean | Hangul | 안녕하세요, 세계 |
+| Arabic | Arabic (RTL) | مرحبا بالعالم |
+| Hebrew | Hebrew (RTL) | שלום עולם |
+| Hindi | Devanagari | नमस्ते दुनिया |
+| Thai | Thai | สวัสดีชาวโลก |
+| Greek | Greek | Γειά σου Κόσμε |
+| Russian | Cyrillic | Привет, мир |
+
+## East Asian (CJK)
+
+Chinese, Japanese and Korean share the Han ideographs but add scripts of their
+own — kana for Japanese, hangul for Korean. All three are typeset from the same
+pan-CJK font.
+
+**Chinese** — 快速的棕色狐狸跳过了那只懒狗。文档可以用任何语言排版。
+
+**Japanese** — 素早い茶色の狐が怠け者の犬を飛び越える。ひらがな、カタカナ、漢字。
+
+**Korean** — 빠른 갈색 여우가 게으른 개를 뛰어넘습니다. 한글로 문서를 조판합니다.
+
+## Right-to-left
+
+Arabic and Hebrew read from right to left. The renderer shapes each run into its
+joined forms and lays the runs out in visual order.
+
+**Arabic** — الثعلب البني السريع يقفز فوق الكلب الكسول.
+
+**Hebrew** — השועל החום המהיר קופץ מעל הכלב העצלן.
+
+Bidirectional text mixes both directions: an Arabic phrase — مرحبا بالعالم —
+inside an English sentence keeps each run in its own direction while the
+sentence as a whole flows left to right.
+
+## South & South-East Asian
+
+**Hindi (Devanagari)** — तेज़ भूरी लोमड़ी आलसी कुत्ते के ऊपर से कूद जाती है।
+
+**Thai** — สุนัขจิ้งจอกสีน้ำตาลที่ว่องไวกระโดดข้ามสุนัขขี้เกียจ
+
+## European
+
+**Greek** — Ταχεία αλεπού πηδά πάνω από το τεμπέλικο σκυλί.
+
+**Cyrillic (Russian)** — Быстрая бурая лиса прыгает через ленивую собаку.

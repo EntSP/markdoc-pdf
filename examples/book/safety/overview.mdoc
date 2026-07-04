@@ -1,0 +1,45 @@
+# Safety
+
+The unit is powered and can move without warning. Observe every safety
+message in this manual.
+
+{% callout type="warning" %}
+Keep all body parts clear of the unit while it is powered. Moving parts can
+cause serious injury.
+{% /callout %}
+
+{% callout type="caution" %}
+Do not operate the unit outside the temperature range given in the
+Specifications chapter.
+{% /callout %}
+
+**Indicator lights.** The status light on top of the unit signals its state
+through colour and pattern:
+
+{% grid min=120 gap=16 %}
+* {% swatch color="#00a000" height=6 /%}
+
+  **Steady green**
+
+  {% color value="#6c757d" %}Ready for use{% /color %}
+
+* {% swatch color="#e00000" height=6 /%}
+
+  **Steady red**
+
+  {% color value="#6c757d" %}Stopped — fault{% /color %}
+
+* {% swatch gradient="90deg, #fd7e14, #ffffff, #fd7e14" height=6 /%}
+
+  **Pulsing amber**
+
+  {% color value="#6c757d" %}Starting up{% /color %}
+
+* {% swatch gradient="90deg, transparent 0%, #e00000 25%, transparent 50%, #e00000 75%, transparent 100%" height=6 /%}
+
+  **Blinking red**
+
+  {% color value="#6c757d" %}Emergency stop{% /color %}
+{% /grid %}
+
+At a glance: {% chip color="#00a000" /%} ready · {% chip color="#fd7e14" /%} busy · {% chip color="#e00000" /%} stop.

@@ -1,0 +1,48 @@
+# Specifications
+
+## Physical
+
+The table below inherits the theme's grid borders and zebra striping:
+
+| Property | Value | Unit |
+| --- | --- | --- |
+| Length | 1,200 | mm |
+| Width | 800 | mm |
+| Height | 400 | mm |
+| Weight | 95 | kg |
+| Rated payload | 250 | kg |
+
+## Battery options
+
+Images sit in ordinary cells too — here as small thumbnails in a list-syntax
+table (`*` cells, `---` rows):
+
+{% table %}
+* Preview
+* Battery
+* Capacity
+---
+* {% media src="swatch.png" size="small" /%}
+* Standard pack
+* 24 Ah
+---
+* {% media src="sample.jpg" size="small" /%}
+* Extended pack
+* 48 Ah
+{% /table %}
+
+## Interfaces
+
+{% columns gap=24 %}
+* **Power**
+
+  - 100–240 V AC
+  - 50 / 60 Hz
+  - IEC C14 inlet
+
+* **Data**
+
+  - Gigabit Ethernet
+  - USB-C (service)
+  - Wi-Fi 6
+{% /columns %}

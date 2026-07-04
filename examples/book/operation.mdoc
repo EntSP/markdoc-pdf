@@ -1,0 +1,49 @@
+# Operation
+
+## Starting up
+
+1. Ensure the area around the unit is clear.
+2. Turn the main switch to **ON**.
+3. Wait for the status light to show {% chip color="#00a000" /%} steady green.
+4. Release the emergency stop.
+
+## Controls
+
+A centred figure grid — `{% columns %}` with `align` and a panel
+`background`:
+
+{% columns gap=20 align="center" background="#f4f5f7" %}
+* ![](figure.svg)
+
+  **Start**
+
+  Powers the unit on.
+
+* ![](figure.svg)
+
+  **Stop**
+
+  Halts all motion at once.
+{% /columns %}
+
+## Configuration
+
+The unit reads its parameters from a `config.toml` file at boot.{% footnote %}A malformed configuration file falls back to safe defaults and logs a warning.{% /footnote %} For example:
+
+```toml
+[unit]
+name       = "acme-01"
+max_speed  = 1.5   # m/s
+payload_kg = 250
+```
+
+## Docking
+
+{% float side="right" width=120 %}
+![](figure.svg)
+
+The unit docks automatically when the battery drops below 15 %. It aligns to
+the charging contacts, reverses in, and confirms the connection before
+charging begins. Text wraps down the side of the docking figure and then
+continues at full width once it clears the image.
+{% /float %}

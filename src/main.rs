@@ -7,8 +7,8 @@
 use clap::Parser;
 use flux_types::FluxFrontmatter;
 use markdoc::{
-    Context, Node, evaluate_conditionals, parse_with_variables,
-    partials::{FsPartialResolver, expand_partials_with_variables},
+    Context, Node, evaluate_conditionals, parse,
+    partials::{FsPartialResolver, expand_partials},
     resolve_crossrefs, resolve_footnotes, transform_with_context,
     types::{Config, NodeType, Scalar},
 };
@@ -123,8 +123,8 @@ fn run(args: &Args) -> Result<(), AppError> {
     // ── Read + parse the source. ───────────────────────────────────
     let source =
         fs::read_to_string(&args.input).map_err(|e| AppError::Read(args.input.clone(), e))?;
-    let doc = parse_with_variables(&source, None, &cli_vars)
-        .map_err(|e| AppError::Parse(args.input.clone(), e.to_string()))?;
+    let doc =
+        parse(&source, None).map_err(|e| AppError::Parse(args.input.clone(), e.to_string()))?;
 
     // Stitch a composed work together: if the root frontmatter carries a
     // Flux `sections` manifest, append a `{% partial %}` per section file so
@@ -133,24 +133,16 @@ fn run(args: &Args) -> Result<(), AppError> {
 
     // Expand `{% partial file="..." /%}` references against the input
     // file's parent directory. Partials' own `{% partial %}` tags are
-    // resolved recursively; cycles are detected and reported.
+    // resolved recursively; cycles are detected and reported. Inline
+    // `{% $var %}` interpolation in a partial / section resolves later,
+    // against the transform Context (which carries the root frontmatter).
     let partial_root = args
         .input
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
     let partial_resolver = FsPartialResolver::new(partial_root);
-    // Seed included files' inline `{% $var %}` interpolation with the root
-    // document's frontmatter, so a section / partial can read
-    // `{% $markdoc.frontmatter.* %}` from the composing document (its own
-    // frontmatter is dropped on inclusion).
-    let mut partial_vars: HashMap<String, Scalar> = HashMap::new();
-    if let Some(fm) = doc.attributes.get("frontmatter") {
-        let mut markdoc = HashMap::new();
-        markdoc.insert("frontmatter".to_string(), fm.clone());
-        partial_vars.insert("markdoc".to_string(), Scalar::Object(markdoc));
-    }
-    let doc = expand_partials_with_variables(&doc, &partial_resolver, &partial_vars)
+    let doc = expand_partials(&doc, &partial_resolver)
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
 
     // Normalise CommonMark footnotes (`[^id]` references + `[^id]:` bodies)
@@ -160,10 +152,12 @@ fn run(args: &Args) -> Result<(), AppError> {
 
     let doc = resolve_crossrefs(&doc);
     // Seed the evaluation context with the document's own frontmatter, so
-    // conditionals and tag attributes can read `$markdoc.frontmatter.*`
-    // (e.g. `{% qr value=$markdoc.frontmatter.documentNumber /%}`). Then
-    // overlay build-time `--var` values as top-level `$key` (parse-time text
-    // interpolation already got them via `parse_with_variables` above).
+    // conditionals, tag attributes, and inline `{% $var %}` interpolation can
+    // read `$markdoc.frontmatter.*` (e.g. `{% qr
+    // value=$markdoc.frontmatter.documentNumber /%}`). Then overlay build-time
+    // `--var` values as top-level `$key`. Everything resolves here, at
+    // transform time, against this one Context — so a stitched-in section sees
+    // the composed book's frontmatter, not its own dropped header.
     let base_ctx = match doc.attributes.get("frontmatter") {
         Some(fm) => Context::new().with_frontmatter(fm.clone()),
         None => Context::new(),

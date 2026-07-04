@@ -127,10 +127,18 @@ runtime; markdoc-pdf renders them as literal text.
 {% img src="img/path/file_name_{$config.model}.png" %}
 ```
 
-The `{$var}` interpolation inside an attribute value isn't expanded
-by the renderer. **Workaround**: parameterise via the asset URI
-itself, e.g. an `arca://…` URI carrying the model in its path, so
-expansion happens at the resolver layer.
+The `{$var}` interpolation *inside a string literal* isn't expanded.
+**Workaround**: build the string with the `concat()` function, whose
+arguments (variables, functions, literals) *are* evaluated — e.g.
+`{% qr value=concat("https://…/", $markdoc.frontmatter.documentNumber) /%}`.
+(A whole-number frontmatter value stringifies without a trailing `.0`.)
+Alternatively parameterise via the asset URI itself, e.g. an `arca://…`
+URI carrying the model in its path.
+
+Composed documents: a section / partial file reads
+`{% $markdoc.frontmatter.* %}` (and `concat` on it) from the **composing
+document's** frontmatter — its own frontmatter is dropped on inclusion, so
+the book-level title / version / document number flow into every section.
 
 ### Conditional rendering binding to `$frontendType`
 

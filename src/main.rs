@@ -8,7 +8,7 @@ use clap::Parser;
 use flux_types::FluxFrontmatter;
 use markdoc::{
     Context, Node, evaluate_conditionals, parse_with_variables,
-    partials::{FsPartialResolver, expand_partials},
+    partials::{FsPartialResolver, expand_partials_with_variables},
     resolve_crossrefs, resolve_footnotes, transform_with_context,
     types::{Config, NodeType, Scalar},
 };
@@ -140,7 +140,17 @@ fn run(args: &Args) -> Result<(), AppError> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
     let partial_resolver = FsPartialResolver::new(partial_root);
-    let doc = expand_partials(&doc, &partial_resolver)
+    // Seed included files' inline `{% $var %}` interpolation with the root
+    // document's frontmatter, so a section / partial can read
+    // `{% $markdoc.frontmatter.* %}` from the composing document (its own
+    // frontmatter is dropped on inclusion).
+    let mut partial_vars: HashMap<String, Scalar> = HashMap::new();
+    if let Some(fm) = doc.attributes.get("frontmatter") {
+        let mut markdoc = HashMap::new();
+        markdoc.insert("frontmatter".to_string(), fm.clone());
+        partial_vars.insert("markdoc".to_string(), Scalar::Object(markdoc));
+    }
+    let doc = expand_partials_with_variables(&doc, &partial_resolver, &partial_vars)
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
 
     // Normalise CommonMark footnotes (`[^id]` references + `[^id]:` bodies)

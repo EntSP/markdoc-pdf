@@ -5,7 +5,7 @@
 Scan for the online manual and the support site:
 
 {% columns gap=28 align="center" %}
-* {% qr value="https://docs.example.com/acme/1234567" size=92 ecl="quartile" /%}
+* {% qr value=concat("https://docs.example.com/acme/", $markdoc.frontmatter.documentNumber) size=92 ecl="quartile" /%}
 
   **Online manual**
 
@@ -32,6 +32,6 @@ Stop — fault or emergency stop.
 
 | Field | Value |
 | --- | --- |
-| Document number | 1234567 |
+| Document number | {% $markdoc.frontmatter.documentNumber %} |
 | Version | 2.0 |
 | Language | English |

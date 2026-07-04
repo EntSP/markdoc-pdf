@@ -65,7 +65,7 @@ all three for PDF metadata, so they stay regardless.
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |
-| Frontmatter variable interpolation `{% $markdoc.frontmatter.version %}` | ✅ Works | Also resolves as a **tag attribute value**, e.g. `{% qr value=$markdoc.frontmatter.documentNumber /%}` and in `{% if %}` predicates |
+| Frontmatter variable interpolation `{% $markdoc.frontmatter.version %}` | ✅ Works | Resolves inline, as a bare **tag attribute value** (`{% qr value=$markdoc.frontmatter.documentNumber /%}`), in `{% if %}` predicates, and spliced **inside an attribute string** via `{$var}` (see *Variables & interpolation*) |
 
 ## Renderer extensions — beyond the Flux spec
 
@@ -81,6 +81,26 @@ as fit — the print analogue of CSS `repeat(auto-fill, minmax(min, 1fr))`),
 inline colour dot — solid, or a linear gradient for the bar), `{% qr %}` (a
 QR code from any value — a URL, arbitrary text, or the frontmatter document
 number), and `{% list %}` (custom marker).
+
+## Variables & interpolation
+
+A frontmatter field (or a `--var`) reaches the page three ways, all resolved
+at transform time against one context:
+
+- **Inline** — `{% $markdoc.frontmatter.title %}` emits the value as text in
+  the body.
+- **Bare attribute** — `{% qr value=$markdoc.frontmatter.documentNumber /%}`
+  passes the value straight into a tag (the same expressions drive `{% if %}`
+  predicates).
+- **Inside a string literal** — `{% qr value="https://docs.example.com/acme/{$markdoc.frontmatter.documentNumber}" /%}`
+  splices one or more `{$var}` spans into the surrounding text, so a URL (or
+  any attribute string) can embed variables. Whole numbers stringify without
+  a trailing `.0`; a `{` not followed by `$` stays literal.
+
+Composed documents: a section / partial reads `{% $markdoc.frontmatter.* %}`
+and `{$var}` from the **composing document's** frontmatter — its own
+frontmatter is dropped on inclusion, so the book-level title / version /
+document number flow into every section.
 
 ## ⚠️ Known gaps — fixable with author edits
 
@@ -121,25 +141,6 @@ Inline JavaScript-style expressions and function-call components
 aren't supported. These are intended for the eventual Adeptus
 runtime; markdoc-pdf renders them as literal text.
 
-### Variable expansion inside attribute strings
-
-```markdoc
-{% img src="img/path/file_name_{$config.model}.png" %}
-```
-
-The `{$var}` interpolation *inside a string literal* isn't expanded.
-**Workaround**: build the string with the `concat()` function, whose
-arguments (variables, functions, literals) *are* evaluated — e.g.
-`{% qr value=concat("https://…/", $markdoc.frontmatter.documentNumber) /%}`.
-(A whole-number frontmatter value stringifies without a trailing `.0`.)
-Alternatively parameterise via the asset URI itself, e.g. an `arca://…`
-URI carrying the model in its path.
-
-Composed documents: a section / partial file reads
-`{% $markdoc.frontmatter.* %}` (and `concat` on it) from the **composing
-document's** frontmatter — its own frontmatter is dropped on inclusion, so
-the book-level title / version / document number flow into every section.
-
 ### Conditional rendering binding to `$frontendType`
 
 The pr-1 README mentions `{% if $frontendType === "pdf" %}` blocks.
@@ -156,9 +157,9 @@ For the MVP loop (write `.mdoc` → `markdoc-pdf` → review), the pr-1
 spec is largely usable today provided writers:
 
 1. Always self-close `{% tag … /%}`, `{% media … /%}`, `{% tagref … /%}`.
-2. Avoid JS-style function components and `{$var}` interpolation in
-   attribute strings — push those concerns into the asset URI
-   instead.
+2. Avoid JS-style function-call components (`renderReleaseTickets(…)`,
+   `files.find(…)`) — those target the Adeptus runtime. (Variables
+   *do* interpolate into attribute strings via `{$var}`.)
 3. Don't depend on `$frontendType` blocks until Scriptor wires up
    per-render Context bindings.
 

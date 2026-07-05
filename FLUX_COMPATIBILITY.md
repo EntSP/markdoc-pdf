@@ -24,17 +24,20 @@ Last verified: pr-1 head `2638396`.
 | `updateDate` | `update_date` | |
 | `accessLevel` | `access_level` | accepts both string and string[] |
 | `tags` | `tags` | |
-| `files` | `files` | both `path:` and `url:` variants |
+| `assets` | `assets` | each a scheme-qualified `uri:` (`file://` / `https://` / `arca://` / …), or a bare URI string |
 | `documentHistory` | `document_history` | array of `{version, date, description}` |
 
-Per-document-type fields (Manual: `hwVersionRobot/TM`, `swVersion`,
-`products`, `configFile`, `sections`; Notice: `category`,
-`affectedProducts`, `affectedHwRanges`, `expiryDate`; Article:
-`orderNumber`; FAQ: `question`, `popularity`; Release Note:
-`swVersion`, `swAccess`; Product Note: `noteType`,
-`replacementProducts`, `effectiveDate`) all deserialise — they're
-collapsed into the same struct as `Option<…>` so adding a document
-type later means adding more fields, not a new sum type.
+Per-document-type fields (Manual / Article: `products`, `sections`;
+Notice / Product Note: `products`, `category`, `noteType`, `expiryDate`,
+`effectiveDate`; Article: `orderNumber`; FAQ: `question`, `popularity`;
+Release Note: `swAccess`) all deserialise. The former hardware /
+software / product fields (`hwVersionRobot/TM`, `swVersion`, the
+`products` string list, `affectedProducts`, `affectedHwRanges`,
+`replacementProducts`, `configFile`) are unified under `products` (each
+with a `relation`, hardware version-or-range, software version, and
+nested add-on `modules`) and `assets`; everything is collapsed into one
+struct as `Option<…>` so adding a document type later means adding more
+fields, not a new sum type.
 
 `flux-types` also keeps `description`, `authors`, and `creator` —
 the pr-1 README dropped them from the common-fields table but its
@@ -134,7 +137,7 @@ are noted where they exist.
 
 ```markdoc
 {{ renderReleaseTickets("fixVersion"="x.x.x", "ReleaseNote"="Published") }}
-{{ files.find(f => f.path && f.path.includes('front-panel')).cdnUrl }}
+{{ assets.find(a => a.uri && a.uri.includes('front-panel')).cdnUrl }}
 ```
 
 Inline JavaScript-style expressions and function-call components
@@ -158,7 +161,7 @@ spec is largely usable today provided writers:
 
 1. Always self-close `{% tag … /%}`, `{% media … /%}`, `{% tagref … /%}`.
 2. Avoid JS-style function-call components (`renderReleaseTickets(…)`,
-   `files.find(…)`) — those target the Adeptus runtime. (Variables
+   `assets.find(…)`) — those target the Adeptus runtime. (Variables
    *do* interpolate into attribute strings via `{$var}`.)
 3. Don't depend on `$frontendType` blocks until Scriptor wires up
    per-render Context bindings.

@@ -298,14 +298,15 @@ fn expand_sections(mut doc: Node, input: &Path) -> Node {
 /// Resolve a `sections` path to a `{% partial %}` `file=` value relative to
 /// the manifest's directory: strip a leading `/` (the Flux example paths are
 /// document-root-relative, not filesystem-absolute) and, when the path has
-/// no extension, probe `.mdoc` then `.md`, defaulting to `.mdoc` so a
-/// genuinely missing file surfaces as the standard partial-not-found error.
+/// no extension, probe `.mdoc`, `.md`, then `.markdoc` (the Flux spec's
+/// extension), defaulting to `.mdoc` so a genuinely missing file surfaces as
+/// the standard partial-not-found error.
 fn section_partial_path(raw: &str, base: &Path) -> String {
     let rel = raw.trim().trim_start_matches('/');
     if Path::new(rel).extension().is_some() {
         return rel.to_string();
     }
-    for ext in ["mdoc", "md"] {
+    for ext in ["mdoc", "md", "markdoc"] {
         let cand = format!("{rel}.{ext}");
         if base.join(&cand).is_file() {
             return cand;
@@ -561,8 +562,33 @@ mod tests {
             section_partial_path("/manual/safety/x", base),
             "manual/safety/x.mdoc"
         );
-        // An explicit extension is preserved.
+        // An explicit extension is preserved — including Flux's `.markdoc`.
         assert_eq!(section_partial_path("a/b.md", base), "a/b.md");
+        assert_eq!(section_partial_path("a/b.markdoc", base), "a/b.markdoc");
+    }
+
+    #[test]
+    fn section_paths_probe_markdoc_then_prefer_native_mdoc() {
+        // A real temp dir so the extension probe can stat files on disk.
+        let dir = std::env::temp_dir().join(format!("mdpdf-sections-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("chapters")).unwrap();
+
+        // Only a `.markdoc` file exists → an extensionless entry finds it.
+        fs::write(dir.join("chapters/intro.markdoc"), b"# Intro\n").unwrap();
+        assert_eq!(
+            section_partial_path("chapters/intro", &dir),
+            "chapters/intro.markdoc"
+        );
+
+        // When both exist, the native `.mdoc` wins (probe order).
+        fs::write(dir.join("chapters/intro.mdoc"), b"# Intro\n").unwrap();
+        assert_eq!(
+            section_partial_path("chapters/intro", &dir),
+            "chapters/intro.mdoc"
+        );
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

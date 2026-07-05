@@ -406,6 +406,44 @@ fn collect_into(out: &mut Inlines, children: &[RenderableTreeNode], footnotes: &
                             _ => None,
                         }
                     }
+                    "ref" => {
+                        // Inline cross-document reference:
+                        //   See {% ref document="4100237" %} for details.
+                        //   {% ref document="4100237" label="the migration guide" %}
+                        // Adeptus resolves it to the target's title + URL. Here,
+                        // without Adeptus, render the `label` (or "doc <number>")
+                        // as a placeholder link to a `flux:` URI — it styles like
+                        // any other link; the real target is resolved upstream.
+                        let attr = |k: &str| match t.attributes.get(k) {
+                            Some(Scalar::String(s)) if !s.trim().is_empty() => {
+                                Some(s.trim().to_string())
+                            }
+                            Some(Scalar::Number(n)) if n.fract() == 0.0 => {
+                                Some(format!("{}", *n as i64))
+                            }
+                            Some(Scalar::Number(n)) => Some(n.to_string()),
+                            _ => None,
+                        };
+                        let doc = attr("document");
+                        if let Some(target) = doc.clone().or_else(|| attr("uuid")) {
+                            let label = attr("label").unwrap_or_else(|| format!("doc {target}"));
+                            let href = if doc.is_some() {
+                                format!("flux:document/{target}")
+                            } else {
+                                format!("flux:uuid/{target}")
+                            };
+                            let start = out.text.len();
+                            out.text.push_str(&label);
+                            let end = out.text.len();
+                            out.links.push(LinkRange {
+                                start,
+                                end,
+                                href,
+                                title: None,
+                            });
+                        }
+                        continue;
+                    }
                     _ => None,
                 };
                 let start = out.text.len();

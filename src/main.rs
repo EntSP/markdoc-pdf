@@ -27,7 +27,7 @@ use std::process::ExitCode;
     version,
     about = "Render a Markdoc source file (.mdoc) to PDF.",
     long_about = "Render a Markdoc source file (.mdoc) to PDF.\n\n\
-                  Frontmatter (title / authors / language / firstReleaseDate / …) \
+                  Frontmatter (title / authors / language / releaseDate / …) \
                   drives the PDF metadata and the {title}/{date}/etc. header-footer \
                   template variables. Pass --style to pick from the built-in theme \
                   catalogue or supply your own .style.toml."
@@ -191,7 +191,7 @@ fn run(args: &Args) -> Result<(), AppError> {
     };
     let creation_date = fm_opt
         .as_ref()
-        .and_then(|fm| fm.first_release_date.as_deref())
+        .and_then(|fm| fm.release_date.as_deref())
         .and_then(dates::parse_iso)
         .or_else(|| Some(dates::now()));
     let authors = fm_opt
@@ -204,7 +204,7 @@ fn run(args: &Args) -> Result<(), AppError> {
         .or_else(|| Some("markdoc-pdf".to_string()));
     let date_string = fm_opt
         .as_ref()
-        .and_then(|fm| fm.first_release_date.as_deref())
+        .and_then(|fm| fm.release_date.as_deref())
         .map(dates::iso_to_date_only);
 
     // Expose the document's own frontmatter as template variables for
@@ -222,7 +222,7 @@ fn run(args: &Args) -> Result<(), AppError> {
     // `first–current`.
     let first_year = fm_opt
         .as_ref()
-        .and_then(|fm| fm.first_release_date.as_deref())
+        .and_then(|fm| fm.release_date.as_deref())
         .and_then(dates::year_of);
     vars.insert(
         "copyright_years".to_string(),

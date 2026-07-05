@@ -35,7 +35,7 @@ authors:
   - Aki Tanaka
   - Maria Linde
 language: en-us
-firstReleaseDate: "2026-05-03"
+releaseDate: "2026-05-03"
 ---
 
 # Pour-over essentials
@@ -277,4 +277,4 @@ whole. It's built on the same inclusion machinery as `{% partial %}`
   `markdoc/` crate's documentation.
 - Frontmatter fields supported out of the box are defined in
   `flux-types/` — start with `title`, `description`, `authors`,
-  `language`, `firstReleaseDate`, `creator`.
+  `language`, `releaseDate`, `creator`.

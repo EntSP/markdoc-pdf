@@ -44,7 +44,7 @@ skip_first_page = false
 [page_decoration.footer]
 # ── three slots, all in use ─────────────────────────────────────────
 left   = "© 2026 Acme Corp. All rights reserved."
-# Auto-spanning alternative — release year (firstReleaseDate) → current year:
+# Auto-spanning alternative — release year (releaseDate) → current year:
 # left = "© {copyright_years} Acme Corp. All rights reserved."
 center = "Confidential — {title}"
 right  = "Page {page} of {total}"

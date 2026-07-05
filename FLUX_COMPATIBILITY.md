@@ -20,24 +20,26 @@ Last verified: pr-1 head `2638396`.
 | `status` | `status` | |
 | `version` | `version` | |
 | `language` | `language` | |
-| `firstReleaseDate` | `first_release_date` | drives `/CreationDate` and `{date}` |
+| `releaseDate` | `release_date` | drives `/CreationDate` and `{date}` |
 | `updateDate` | `update_date` | |
 | `accessLevel` | `access_level` | accepts both string and string[] |
 | `tags` | `tags` | |
 | `assets` | `assets` | each a scheme-qualified `uri:` (`file://` / `https://` / `arca://` / …), or a bare URI string |
 | `documentHistory` | `document_history` | array of `{version, date, description}` |
 
-Per-document-type fields (Manual / Article: `products`, `sections`;
-Notice / Product Note: `products`, `category`, `noteType`, `expiryDate`,
-`effectiveDate`; Article: `orderNumber`; FAQ: `question`, `popularity`;
-Release Note: `swAccess`) all deserialise. The former hardware /
-software / product fields (`hwVersionRobot/TM`, `swVersion`, the
-`products` string list, `affectedProducts`, `affectedHwRanges`,
-`replacementProducts`, `configFile`) are unified under `products` (each
-with a `relation`, hardware version-or-range, software version, and
-nested add-on `modules`) and `assets`; everything is collapsed into one
-struct as `Option<…>` so adding a document type later means adding more
-fields, not a new sum type.
+`flux-types` types only the **universal document core** — the common fields
+above plus `products` and `sections`. The former hardware / software / product
+fields (`hwVersionRobot/TM`, `swVersion`, the `products` string list,
+`affectedProducts`, `affectedHwRanges`, `replacementProducts`, `configFile`,
+and a known issue's `affectedVersions` / `resolvedInVersion`) folded into the
+recursive `products` field — each with a `relation` (`applies_to` / `affected`
+/ `replacement` / `fixed_in`), a `VersionSpec` hardware/software version *or*
+`from`/`to` range, and nested add-on `modules`. The remaining per-type fields
+the earlier spec listed (`category`, `noteType`, `question`, `popularity`,
+`swAccess`, `effectiveDate` / `expiryDate`, `orderNumber`) were **removed** as
+workflow / application concerns — they live in the repo layout, the pipeline /
+Adeptus, or the document body, not the typed schema. Unknown frontmatter keys
+are still ignored, so a document that carries them parses fine.
 
 `flux-types` also keeps `description`, `authors`, and `creator` —
 the pr-1 README dropped them from the common-fields table but its

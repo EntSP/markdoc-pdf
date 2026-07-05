@@ -24,7 +24,7 @@ shell out to in the production pipeline.
                                                PDF
 ```
 
-Frontmatter (`title`, `authors`, `language`, `firstReleaseDate`, …)
+Frontmatter (`title`, `authors`, `language`, `releaseDate`, …)
 drives PDF `/Info` metadata and the `{title}` / `{date}` / `{authors}`
 template variables in headers and footers. The typed view comes from
 [`flux-types`](https://github.com/EntSP/flux-types), which `markdoc-pdf` re-exports as

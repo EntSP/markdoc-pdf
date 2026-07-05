@@ -1,0 +1,28 @@
+---
+title: Document history
+documentNumber: 700055
+documentHistory:
+  - version: "3.0"
+    date: "2026-06-01"
+    description: "Added the maintenance chapter; revised the wiring diagrams."
+  - version: "2.1"
+    date: "2025-11-10"
+    description: "Corrected torque values in section 4."
+  - version: "1.0"
+    date: "2024-07-30"
+    description: "First edition."
+---
+
+# Document history
+
+A document's revision history lives in the `documentHistory` frontmatter — a
+list of `{ version, date, description }` entries. Drop `\{% document-history /%}`
+wherever the table should appear; the renderer builds it from the frontmatter,
+so the data is authored once and every document's history table looks the same.
+
+{% document-history /%}
+
+The heading defaults to *Document history*. Pass `title=` to change it, or
+`title=""` for the table on its own:
+
+{% document-history title="Revision log" /%}

@@ -5,7 +5,7 @@
 //! possible) a hint about how to fix it.
 
 use clap::Parser;
-use flux_types::FluxFrontmatter;
+use flux_types::{FluxFrontmatter, HistoryEntry};
 use markdoc::{
     Context, Node, evaluate_conditionals, parse,
     partials::{FsPartialResolver, expand_partials},
@@ -144,6 +144,11 @@ fn run(args: &Args) -> Result<(), AppError> {
     let partial_resolver = FsPartialResolver::new(partial_root);
     let doc = expand_partials(&doc, &partial_resolver)
         .map_err(|e| AppError::Partials(args.input.clone(), e.to_string()))?;
+
+    // Expand `{% document-history /%}` into a table built from the composed
+    // document's `documentHistory` frontmatter — after partial expansion so the
+    // tag may live in a partial and still read the root document's history.
+    let doc = expand_document_history(doc);
 
     // Normalise CommonMark footnotes (`[^id]` references + `[^id]:` bodies)
     // into `{% footnote %}` tags — after partial / section expansion so a
@@ -307,6 +312,73 @@ fn section_partial_path(raw: &str, base: &Path) -> String {
         }
     }
     format!("{rel}.mdoc")
+}
+
+/// Internal tag name authored as `{% document-history /%}`.
+const DOC_HISTORY_TAG: &str = "document-history";
+
+/// Replace every `{% document-history /%}` with a heading + table built from
+/// the composed document's `documentHistory` frontmatter (typed as
+/// [`HistoryEntry`]). An empty or absent history drops the tag entirely.
+fn expand_document_history(mut doc: Node) -> Node {
+    let history = match FluxFrontmatter::from_node(&doc) {
+        Ok(fm) => fm.document_history,
+        Err(_) => return doc, // no / unparsable frontmatter — nothing to expand
+    };
+    replace_history_tags(&mut doc, &history);
+    doc
+}
+
+fn replace_history_tags(node: &mut Node, history: &[HistoryEntry]) {
+    let mut i = 0;
+    while i < node.children.len() {
+        let child = &node.children[i];
+        if child.node_type == NodeType::Tag && child.tag.as_deref() == Some(DOC_HISTORY_TAG) {
+            let title = match child.attributes.get("title") {
+                Some(Scalar::String(s)) => Some(s.clone()),
+                _ => None,
+            };
+            let replacement = document_history_nodes(history, title.as_deref());
+            let n = replacement.len();
+            node.children.splice(i..=i, replacement);
+            i += n; // skip the generated nodes (don't recurse into them)
+        } else {
+            replace_history_tags(&mut node.children[i], history);
+            i += 1;
+        }
+    }
+}
+
+/// Build the heading + table nodes for a document history by generating the
+/// equivalent Markdoc source and re-parsing it — the parser produces exactly
+/// the node shapes the table renderer expects, and cell text is `|`-escaped.
+/// An empty history yields nothing (the tag is simply removed).
+fn document_history_nodes(history: &[HistoryEntry], title: Option<&str>) -> Vec<Node> {
+    if history.is_empty() {
+        return Vec::new();
+    }
+    let mut src = String::new();
+    match title {
+        Some("") => {} // caller asked for no heading
+        Some(t) => src.push_str(&format!("## {t}\n\n")),
+        None => src.push_str("## Document history\n\n"),
+    }
+    src.push_str("| Version | Date | Description |\n| --- | --- | --- |\n");
+    let cell = |v: &Option<String>| {
+        v.as_deref()
+            .unwrap_or("")
+            .replace('|', "\\|")
+            .replace('\n', " ")
+    };
+    for e in history {
+        src.push_str(&format!(
+            "| {} | {} | {} |\n",
+            cell(&e.version),
+            cell(&e.date),
+            cell(&e.description)
+        ));
+    }
+    parse(&src, None).map(|d| d.children).unwrap_or_default()
 }
 
 /// Surface every scalar frontmatter field as a template variable keyed

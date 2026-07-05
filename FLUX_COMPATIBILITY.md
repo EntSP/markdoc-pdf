@@ -67,6 +67,7 @@ all three for PDF metadata, so they stay regardless.
 | `{% if A %}…{% else $B /%}…{% else /%}…{% /if %}` | ✅ Works | Else-if chain; bare `{% else /%}` is the unconditional fallback |
 | `{% partial file="…" /%}` | ✅ Works | Recursive, cycle-detected; `file=` resolves against the input file's directory — relative `../` and absolute paths reach other dirs |
 | Manual `sections:` manifest | ✅ Works | Stitches the listed section / subsection files into one book, in order (section then its subsections), via the partial machinery — sub-file frontmatter is dropped, so the root's work-level frontmatter (title / version / documentNumber) governs the whole. Paths resolve against the root file's dir; extensionless entries get `.mdoc`/`.md` |
+| `{% document-history /%}` | ✅ Works | Renders the frontmatter `documentHistory` (a `{version, date, description}` list) as a table. Self-closing; `title=` overrides the *Document history* heading and `title=""` drops it. Expands after partials, so it may sit in a section / partial and still reads the composed root's history |
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |

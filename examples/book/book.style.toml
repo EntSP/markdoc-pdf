@@ -78,6 +78,7 @@ right = "{page}"
 
 [page_decoration.last_page_qr]
 size = 52.0
+# align = "center"   # which bottom corner: left | center | right (default)
 margin_right = 46.0
 margin_bottom = 50.0
 color = { r = 0, g = 48, b = 135 }

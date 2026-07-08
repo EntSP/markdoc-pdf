@@ -1176,8 +1176,8 @@ pub struct PageDecorationStyle {
     pub last_page_qr: Option<LastPageQr>,
 }
 
-/// A small QR code stamped in the bottom-right corner of the last page that
-/// carries content, above a human-readable label. `value` and `label` are
+/// A small QR code stamped in a bottom corner of the last page (per `align`)
+/// that carries content, above a human-readable label. `value` and `label` are
 /// templates (default `"{documentNumber}"`, resolved against the document's
 /// frontmatter and the usual `{page}`/`{title}`/… tokens); a `value` that
 /// doesn't resolve (no such field) skips the stamp entirely, and an empty
@@ -1193,7 +1193,15 @@ pub struct LastPageQr {
     pub size: f32,
     /// Error-correction level: `low` | `medium` | `quartile` | `high`.
     pub ecl: String,
-    /// Gap from the page's right edge to the code's right edge, in points.
+    /// Horizontal placement on the page: `left` | `center` | `right`
+    /// (default). `left`/`right` are inset by `margin_left` / `margin_right`;
+    /// `center` ignores both and sits the code on the page centre-line.
+    pub align: String,
+    /// Gap from the page's left edge to the code's left edge, in points
+    /// (used when `align = "left"`).
+    pub margin_left: f32,
+    /// Gap from the page's right edge to the code's right edge, in points
+    /// (used when `align = "right"`, the default).
     pub margin_right: f32,
     /// Gap from the page's bottom edge to the caption's bottom, in points —
     /// set this larger than the footer band so the stamp clears it.
@@ -1211,6 +1219,8 @@ impl Default for LastPageQr {
             label: "{documentNumber}".to_string(),
             size: 54.0,
             ecl: "medium".to_string(),
+            align: "right".to_string(),
+            margin_left: 40.0,
             margin_right: 40.0,
             margin_bottom: 48.0,
             color: ColorRgb::new(0, 0, 0),

@@ -123,8 +123,9 @@ pub fn emit_footer(
     }
 }
 
-/// Stamp a QR code encoding the resolved `spec.value` in the bottom-right
-/// corner of the page, above a `spec.label` caption. Silently does nothing
+/// Stamp a QR code encoding the resolved `spec.value` in a bottom corner of
+/// the page (left / centre / right per `spec.align`), above a `spec.label`
+/// caption. Silently does nothing
 /// when the value template leaves an unresolved `{token}` (e.g. the document
 /// has no `documentNumber`) or resolves to empty — so it is safe to enable
 /// document-wide. Tagged as an artifact: it is production metadata, not
@@ -173,9 +174,14 @@ pub fn emit_last_page_qr(
         0.0
     };
 
-    // Anchored so the caption's bottom sits `margin_bottom` above the page
-    // edge and the code's right edge sits `margin_right` from it.
-    let qr_x = style.page_width - spec.margin_right - spec.size;
+    // Vertically anchored so the caption's bottom sits `margin_bottom` above
+    // the page edge. Horizontally, `align` picks the corner: left / centre /
+    // right (default), inset by the matching margin (`center` ignores both).
+    let qr_x = match spec.align.trim().to_ascii_lowercase().as_str() {
+        "left" => spec.margin_left,
+        "center" | "centre" => (style.page_width - spec.size) / 2.0,
+        _ => style.page_width - spec.margin_right - spec.size,
+    };
     let qr_y = style.page_height - spec.margin_bottom - label_h - label_gap - spec.size;
 
     if tagged {

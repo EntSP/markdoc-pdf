@@ -278,7 +278,14 @@ pub fn emit_notice_banner(
     //    no label). Its x and the disclaimer's wrap width are fixed now,
     //    but it is drawn later — once the label's y is known — so it can
     //    be lowered toward the label. ──────────────────────────────────
-    let mut right_block_left = right; // disclaimer wraps up to here
+    // The disclaimer wraps up to `right_block_left`, kept clear of BOTH the
+    // right-hand icon AND its label — the label is often wider than the icon
+    // and reaches further left, so wrapping only around the icon would let the
+    // disclaimer run into the label.
+    let mut right_block_left = right;
+    if label_layout.is_some() {
+        right_block_left = right_block_left.min(label_x - 12.0);
+    }
     let mut icon_x = 0.0;
     let mut icon_h = 0.0;
     if let Some(icon) = &banner.icon {
@@ -287,7 +294,7 @@ pub fn emit_notice_banner(
         } else {
             right - icon.width
         };
-        right_block_left = icon_x - 12.0;
+        right_block_left = right_block_left.min(icon_x - 12.0);
         icon_h = icon.height;
     }
 

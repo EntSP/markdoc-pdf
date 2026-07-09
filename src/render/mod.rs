@@ -398,9 +398,14 @@ pub fn render_pdf_with(
     }
     let total_pages = pages.len();
 
-    // Index of the last page that carries body content — where a last-page
-    // QR stamp lands (never a blank duplex-padding page).
+    // Where the last-page QR stamp lands: the last page carrying body content
+    // (never a blank duplex-padding page) — unless `include_padding_page` opts
+    // into the physical last page (the back of the last sheet).
     let last_content_idx = pages.iter().rposition(|(b, _)| !b.is_empty());
+    let qr_page_idx = match &style.page_decoration.last_page_qr {
+        Some(q) if q.include_padding_page => total_pages.checked_sub(1),
+        _ => last_content_idx,
+    };
 
     // 3. Emit. Each page collects link annotations and outline points
     //    locally; outline points carry their page index so the final
@@ -562,7 +567,7 @@ pub fn render_pdf_with(
             }
             // Last-page QR stamp — bottom-right corner of the final content
             // page, drawn regardless of the header/footer skip logic.
-            if Some(page_idx) == last_content_idx
+            if Some(page_idx) == qr_page_idx
                 && let Some(qr) = &style.page_decoration.last_page_qr
             {
                 decoration::emit_last_page_qr(

@@ -1221,6 +1221,11 @@ pub struct LastPageQr {
     pub color: ColorRgb,
     /// Font size of the caption.
     pub label_font_size: f32,
+    /// When the document pads to an even page count, place the stamp on the
+    /// physical last page — the blank duplex-padding page — instead of the
+    /// last page carrying body content. Off by default (the stamp avoids the
+    /// blank filler). No effect when there is no padding page.
+    pub include_padding_page: bool,
 }
 
 impl Default for LastPageQr {
@@ -1236,6 +1241,7 @@ impl Default for LastPageQr {
             margin_bottom: 48.0,
             color: ColorRgb::new(0, 0, 0),
             label_font_size: 8.0,
+            include_padding_page: false,
         }
     }
 }

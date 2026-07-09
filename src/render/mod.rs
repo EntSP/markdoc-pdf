@@ -297,12 +297,41 @@ pub fn render_pdf_with(
     let inner_x = style.margin_x;
     let inner_w = style.page_width - 2.0 * style.margin_x;
 
+    // The cover page (page 0) may carry its own vertical margin
+    // (`CoverPageStyle::margin_y`) so a tall hero can bleed toward the page
+    // edges. When set, the first page gets its own budget and start; since it
+    // skips its header / footer, its whole height between the cover margins is
+    // available. (Its horizontal margin is baked into the cover blocks' x.)
+    let cover_first_page = style.coverpage.enabled
+        && (style.coverpage.margin_x.is_some() || style.coverpage.margin_y.is_some());
+    let cover_margin_y = style.coverpage.margin_y.unwrap_or(style.margin_y);
+    let cover_hf = if style.page_decoration.skip_first_page {
+        0.0
+    } else {
+        header_reserved + footer_reserved + banner_reserved
+    };
+    let first_page_budget = if cover_first_page {
+        style.page_height - 2.0 * cover_margin_y - cover_hf
+    } else {
+        page_budget
+    };
+    let first_page_start_y = if cover_first_page {
+        let hdr = if style.page_decoration.skip_first_page {
+            0.0
+        } else {
+            header_reserved + banner_reserved
+        };
+        cover_margin_y + hdr
+    } else {
+        body_start_y
+    };
+
     // Footnote-aware pagination: pool height is recomputed every time
     // a block carrying footnote calls is added, so the body budget
     // shrinks dynamically as footnotes accumulate.
     let body_with_pools: Vec<(Vec<block::Block>, Vec<block::Block>)> = {
         let footnotes = &footnotes;
-        paginate::paginate_with_footnotes(blocks, page_budget, |numbers| {
+        paginate::paginate_with_footnotes(blocks, page_budget, first_page_budget, |numbers| {
             if numbers.is_empty() {
                 return (0.0, Vec::new());
             }
@@ -428,10 +457,16 @@ pub fn render_pdf_with(
                     tagging_enabled,
                 );
             }
+            // The cover page (page 0) may start at its own top margin.
+            let page_start_y = if page_idx == 0 {
+                first_page_start_y
+            } else {
+                body_start_y
+            };
             emit::emit_blocks(
                 &mut surface,
                 page_blocks,
-                body_start_y,
+                page_start_y,
                 &mut font_cache,
                 &mut links,
                 &mut outline_pts,

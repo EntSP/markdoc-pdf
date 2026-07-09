@@ -32,6 +32,7 @@ use super::block::{Block, SplitOutcome};
 pub fn paginate_with_footnotes(
     blocks: Vec<Block>,
     page_budget: f32,
+    first_page_budget: f32,
     mut pool_for: impl FnMut(&[u32]) -> (f32, Vec<Block>),
 ) -> Vec<(Vec<Block>, Vec<Block>)> {
     let mut pages: Vec<(Vec<Block>, Vec<Block>)> = Vec::new();
@@ -75,6 +76,13 @@ pub fn paginate_with_footnotes(
         }
         let needed = block.height + block.space_after;
 
+        // The first page (the cover, when present) may carry its own budget.
+        let budget = if pages.is_empty() {
+            first_page_budget
+        } else {
+            page_budget
+        };
+
         // Speculatively recompute the pool if this block carries any
         // new footnote calls. (No new calls = no recomputation cost.)
         let mut new_calls = Vec::new();
@@ -87,7 +95,7 @@ pub fn paginate_with_footnotes(
             pool_for(&combined)
         };
 
-        if current_body_height + needed + speculative_pool_h <= page_budget {
+        if current_body_height + needed + speculative_pool_h <= budget {
             current_body_height += needed;
             current_pool_height = speculative_pool_h;
             current_pool_blocks = speculative_pool;
@@ -98,7 +106,7 @@ pub fn paginate_with_footnotes(
 
         // Doesn't fit. Try splitting against the body budget that
         // remains AFTER the (provisional) larger pool reserves space.
-        let remaining = page_budget - current_body_height - speculative_pool_h;
+        let remaining = budget - current_body_height - speculative_pool_h;
         match block.try_split(remaining.max(0.0)) {
             SplitOutcome::Whole(b) => {
                 current_body_height += b.height + b.space_after;

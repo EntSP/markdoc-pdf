@@ -46,8 +46,10 @@ pub fn build_coverpage_blocks(
         return Vec::new();
     }
     let mut out = Vec::new();
-    let body_left = style.margin_x;
-    let column_w = style.page_width - 2.0 * style.margin_x;
+    // The cover may set its own horizontal margin (e.g. a narrow 1.5 cm cover
+    // margin on a 2.5 cm body), letting the hero bleed wider than the column.
+    let body_left = coverpage.margin_x.unwrap_or(style.margin_x);
+    let column_w = style.page_width - 2.0 * body_left;
     let align = cover_alignment(coverpage.align);
 
     // Top spacer.

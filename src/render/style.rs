@@ -755,6 +755,15 @@ impl TextAlign {
 #[serde(default)]
 pub struct CoverPageStyle {
     pub enabled: bool,
+    /// Horizontal page margin for the cover page only, in points. Defaults
+    /// to the document `margin_x`. A smaller value lets cover art (the hero
+    /// image) bleed wider than the body text column.
+    pub margin_x: Option<f32>,
+    /// Vertical page margin for the cover page only, in points. Defaults to
+    /// the document `margin_y`. A smaller value gives the cover more room
+    /// (e.g. for a tall hero) and lifts the logo toward the page top. Only
+    /// honoured when the cover page skips its header / footer.
+    pub margin_y: Option<f32>,
     pub logo: Option<LogoSpec>,
     /// Where the logo sits relative to the title. See [`LogoPosition`].
     pub logo_position: LogoPosition,
@@ -824,6 +833,8 @@ impl Default for CoverPageStyle {
     fn default() -> Self {
         Self {
             enabled: false,
+            margin_x: None,
+            margin_y: None,
             logo: None,
             logo_position: LogoPosition::Above,
             hero: None,

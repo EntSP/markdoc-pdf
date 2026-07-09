@@ -343,11 +343,11 @@ pub fn emit_notice_banner(
     let line_h = banner.label_font_size * 1.25;
     let label_top = (rule_y - line_h - 3.0).max(band_top + icon_h + 2.0);
 
-    // Draw the icon, lowered halfway down the gap to the label so the two
-    // read as a group rather than the icon floating at the band top.
+    // Sit the icon just above the label with a small, consistent gap so the
+    // two read as a group — regardless of how tall the disclaimer made the
+    // band. Clamped so the icon never rises above the band top.
     if let Some(icon) = &banner.icon {
-        let gap = (label_top - (band_top + icon.height)).max(0.0);
-        let icon_y = band_top + gap * 0.5;
+        let icon_y = (label_top - icon.height - 6.0).max(band_top);
         draw_logo(surface, icon, icon_x, icon_y, assets, media_cache);
     }
 

@@ -68,6 +68,8 @@ all three for PDF metadata, so they stay regardless.
 | `{% partial file="…" /%}` | ✅ Works | Recursive, cycle-detected; `file=` resolves against the input file's directory — relative `../` and absolute paths reach other dirs |
 | Manual `sections:` manifest | ✅ Works | Stitches the listed section / subsection files into one book, in order (section then its subsections), via the partial machinery — sub-file frontmatter is dropped, so the root's work-level frontmatter (title / version / documentNumber) governs the whole. Paths resolve against the root file's dir; extensionless entries get `.mdoc`/`.md`/`.markdoc` (the Flux extension) |
 | `{% document-history /%}` | ✅ Works | Renders the frontmatter `documentHistory` (a `{version, date, description}` list) as a table. Self-closing; `title=` overrides the *Document history* heading and `title=""` drops it. Expands after partials, so it may sit in a section / partial and still reads the composed root's history |
+| `{% gate /%}` | ✅ Stripped | Free-reading cut-off for digital frontends — content below is gated by `access_level`. Digital-only, so markdoc-pdf renders nothing for it: a printed PDF always carries the whole document. Self-closing |
+| `{% ad /%}` | ✅ Stripped | Ad slot with targeting metadata (`slot` / `format` / `categories` / `keywords`) for digital frontends. markdoc-pdf renders nothing — no ads in print. Self-closing |
 | `![alt](path/to/file)` | ✅ Works | Asset resolved against `--assets-root` |
 | `[link text](https://…)` | ✅ Works | External link annotation |
 | Tables, lists, blockquotes, fenced code | ✅ Work | Hyphenation, syntax highlighting per style |

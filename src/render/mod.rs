@@ -154,7 +154,17 @@ impl TemplateContext<'_> {
 /// Media references resolve through the null resolver (placeholder text);
 /// for documents that contain images, use [`render_pdf_with_assets`].
 #[allow(unused_mut)] // krilla's Surface lint misfires; binding kept mut for clarity
-pub fn render_pdf(root: &RenderableTreeNode, style: &Style) -> Vec<u8> {
+/// Errors surfaced by the final PDF serialisation pass. Layout itself is
+/// infallible by construction; krilla defers image stream encoding to
+/// `finish()`, so a corrupt embedded asset surfaces here — as an error the
+/// CLI reports cleanly, not a panic.
+#[derive(Debug, thiserror::Error)]
+pub enum RenderError {
+    #[error("{0}")]
+    Serialise(String),
+}
+
+pub fn render_pdf(root: &RenderableTreeNode, style: &Style) -> Result<Vec<u8>, RenderError> {
     render_pdf_with(
         root,
         style,
@@ -170,7 +180,7 @@ pub fn render_pdf_with_assets(
     root: &RenderableTreeNode,
     style: &Style,
     assets: &dyn AssetResolver,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, RenderError> {
     render_pdf_with(root, style, assets, &RenderContext::default())
 }
 
@@ -182,7 +192,7 @@ pub fn render_pdf_with(
     style: &Style,
     assets: &dyn AssetResolver,
     ctx: &RenderContext,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, RenderError> {
     let mut font_cx = FontContext::default();
     let mut layout_cx = LayoutContext::new();
     let mut font_cache: HashMap<u64, Font> = HashMap::new();
@@ -690,7 +700,11 @@ pub fn render_pdf_with(
         page.finish();
     }
 
-    document.finish().unwrap()
+    document.finish().map_err(|e| {
+        RenderError::Serialise(format!(
+            "PDF serialisation failed (a corrupt embedded image is the usual cause): {e:?}"
+        ))
+    })
 }
 
 fn document_has_no_pages(_doc: &Document) -> bool {

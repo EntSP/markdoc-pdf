@@ -249,7 +249,8 @@ fn run(args: &Args) -> Result<(), AppError> {
         vars,
     };
 
-    let pdf = render_pdf_with(&rendered, &style, &resolver, &render_ctx);
+    let pdf = render_pdf_with(&rendered, &style, &resolver, &render_ctx)
+        .map_err(|e| AppError::Render(args.input.clone(), e.to_string()))?;
 
     fs::write(&args.output, &pdf).map_err(|e| AppError::Write(args.output.clone(), e))?;
     eprintln!(
@@ -430,6 +431,7 @@ enum AppError {
     Partials(PathBuf, String),
     Conditionals(PathBuf, String),
     Transform(PathBuf, String),
+    Render(PathBuf, String),
 }
 
 impl AppError {
@@ -495,6 +497,9 @@ impl std::fmt::Display for AppError {
             }
             AppError::Conditionals(p, e) => {
                 write!(f, "conditional evaluation failed in {}: {e}", p.display())
+            }
+            AppError::Render(p, e) => {
+                write!(f, "rendering {} failed: {e}", p.display())
             }
             AppError::Transform(p, e) => {
                 write!(f, "transform failed in {}: {e}", p.display())

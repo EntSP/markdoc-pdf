@@ -44,6 +44,10 @@ pub struct Block {
     /// tag instead of the default `P`. Used by the footnote pool to
     /// emit each entry as `Note`.
     pub tag_role: Option<TagRole>,
+    /// Page column index when `page_layout.columns > 1` (0 = left).
+    pub page_column: u8,
+    /// When true the block spans every column on the page (e.g. H1, tables).
+    pub column_span: bool,
 }
 
 /// Override for the structure-tree tag emit assigns to a Text block.
@@ -118,9 +122,27 @@ impl Block {
         if needed <= remaining {
             return SplitOutcome::Whole(self);
         }
-        let anchor_id = self.anchor_id.clone();
-        match self.draw {
-            BlockDraw::Text(slice) => try_split_text(slice, self.space_after, remaining),
+        let Block {
+            height,
+            space_after,
+            draw,
+            outline,
+            anchor_id,
+            tag_role,
+            page_column,
+            column_span,
+        } = self;
+        match draw {
+            BlockDraw::Text(slice) => try_split_text(
+                slice,
+                space_after,
+                remaining,
+                page_column,
+                column_span,
+                tag_role,
+                anchor_id,
+                outline,
+            ),
             BlockDraw::Table {
                 x,
                 column_widths,
@@ -142,25 +164,39 @@ impl Block {
                 border_thickness,
                 border_style,
                 edge,
-                self.space_after,
+                space_after,
                 remaining,
                 anchor_id,
                 caption,
+                page_column,
+                column_span,
+                tag_role,
+                outline,
             ),
             other => SplitOutcome::NoFit(Block {
-                height: self.height,
-                space_after: self.space_after,
+                height,
+                space_after,
                 draw: other,
-                outline: None,
+                outline,
                 anchor_id,
-
-                tag_role: None,
+                tag_role,
+                page_column,
+                column_span,
             }),
         }
     }
 }
 
-fn try_split_text(slice: TextSlice, space_after: f32, remaining: f32) -> SplitOutcome {
+fn try_split_text(
+    slice: TextSlice,
+    space_after: f32,
+    remaining: f32,
+    page_column: u8,
+    column_span: bool,
+    tag_role: Option<TagRole>,
+    anchor_id: Option<String>,
+    outline: Option<OutlineEntry>,
+) -> SplitOutcome {
     let start = slice.line_range.start;
     let end = slice.line_range.end;
     let mut acc = 0.0_f32;
@@ -179,10 +215,11 @@ fn try_split_text(slice: TextSlice, space_after: f32, remaining: f32) -> SplitOu
             height: slice.height(),
             space_after,
             draw: BlockDraw::Text(slice),
-            outline: None,
-            anchor_id: None,
-
-            tag_role: None,
+            outline,
+            anchor_id,
+            tag_role,
+            page_column,
+            column_span,
         });
     }
     if split_at == end {
@@ -190,10 +227,11 @@ fn try_split_text(slice: TextSlice, space_after: f32, remaining: f32) -> SplitOu
             height: slice.height(),
             space_after,
             draw: BlockDraw::Text(slice),
-            outline: None,
-            anchor_id: None,
-
-            tag_role: None,
+            outline,
+            anchor_id,
+            tag_role,
+            page_column,
+            column_span,
         });
     }
     let head_height: f32 = slice.line_heights[start..split_at].iter().sum();
@@ -212,10 +250,11 @@ fn try_split_text(slice: TextSlice, space_after: f32, remaining: f32) -> SplitOu
             line_range: start..split_at,
             skip_y: slice.skip_y,
         }),
-        outline: None,
-        anchor_id: None,
-
-        tag_role: None,
+        outline: outline.clone(),
+        anchor_id: anchor_id.clone(),
+        tag_role,
+        page_column,
+        column_span,
     };
     let tail = Block {
         height: tail_height,
@@ -231,10 +270,11 @@ fn try_split_text(slice: TextSlice, space_after: f32, remaining: f32) -> SplitOu
             footnote_calls: slice.footnote_calls,
             line_heights: slice.line_heights,
         }),
-        outline: None,
-        anchor_id: None,
-
+        outline,
+        anchor_id,
         tag_role: None,
+        page_column,
+        column_span,
     };
     SplitOutcome::Split(head, tail)
 }
@@ -254,6 +294,10 @@ fn try_split_table(
     remaining: f32,
     anchor_id: Option<String>,
     caption: Option<String>,
+    page_column: u8,
+    column_span: bool,
+    tag_role: Option<TagRole>,
+    outline: Option<OutlineEntry>,
 ) -> SplitOutcome {
     // Header rows form a contiguous prefix (`is_header == true`); they
     // repeat on every continuation page.
@@ -305,8 +349,12 @@ fn try_split_table(
                     border_style,
                     edge,
                     0.0,
-                    anchor_id,
+                    anchor_id.clone(),
                     caption.clone(),
+                    page_column,
+                    column_span,
+                    tag_role,
+                    outline.clone(),
                 );
                 let tail_block = make_table_block(
                     x,
@@ -319,6 +367,10 @@ fn try_split_table(
                     border_style,
                     edge,
                     space_after,
+                    None,
+                    None,
+                    page_column,
+                    column_span,
                     None,
                     None,
                 );
@@ -338,6 +390,10 @@ fn try_split_table(
             space_after,
             anchor_id,
             caption,
+            page_column,
+            column_span,
+            tag_role,
+            outline,
         ));
     }
     if header_count + included_body == rows.len() {
@@ -354,6 +410,10 @@ fn try_split_table(
             space_after,
             anchor_id,
             caption,
+            page_column,
+            column_span,
+            tag_role,
+            outline,
         ));
     }
 
@@ -380,6 +440,10 @@ fn try_split_table(
         0.0,
         anchor_id,
         caption.clone(),
+        page_column,
+        column_span,
+        tag_role,
+        outline.clone(),
     );
     let tail_block = make_table_block(
         x,
@@ -392,6 +456,10 @@ fn try_split_table(
         border_style,
         edge,
         space_after,
+        None,
+        None,
+        page_column,
+        column_span,
         None,
         None,
     );
@@ -513,6 +581,10 @@ fn make_table_block(
     space_after: f32,
     anchor_id: Option<String>,
     caption: Option<String>,
+    page_column: u8,
+    column_span: bool,
+    tag_role: Option<TagRole>,
+    outline: Option<OutlineEntry>,
 ) -> Block {
     let height: f32 =
         rows.iter().map(|r| r.height).sum::<f32>() + border_thickness * (rows.len() as f32 + 1.0);
@@ -531,10 +603,12 @@ fn make_table_block(
             edge,
             caption,
         },
-        outline: None,
+        outline,
         anchor_id,
 
-        tag_role: None,
+        tag_role,
+        page_column,
+        column_span,
     }
 }
 
@@ -907,6 +981,8 @@ pub fn build_footnote_pool_blocks(
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     });
     let rule_w = (inner_w * style.footnote.rule_width_frac).max(0.0);
     out.push(Block {
@@ -922,6 +998,8 @@ pub fn build_footnote_pool_blocks(
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     });
 
     // 2. One paragraph per footnote: "ⁿ body text".
@@ -951,6 +1029,8 @@ pub fn build_footnote_pool_blocks(
             outline: None,
             anchor_id: None,
             tag_role: Some(TagRole::Note),
+            page_column: 0,
+            column_span: false,
         });
     }
     out
@@ -1056,6 +1136,28 @@ impl<'a> LayoutCtx<'a> {
         }
         bump_heading_counters(&mut self.heading_counters, level, cfg.max_depth)
     }
+
+    pub fn page_columns(&self) -> u8 {
+        self.style.page_layout.columns.max(1)
+    }
+
+    pub fn body_full_width(&self) -> f32 {
+        self.style.page_width - 2.0 * self.style.margin_x
+    }
+
+    pub fn body_column_width(&self) -> f32 {
+        let cols = self.page_columns();
+        let full = self.body_full_width();
+        if cols <= 1 {
+            return full;
+        }
+        let gap = self.style.page_layout.gap;
+        (full - gap * (cols as f32 - 1.0)) / cols as f32
+    }
+
+    pub fn heading_spans_columns(&self, level: u8) -> bool {
+        self.page_columns() > 1 && level <= self.style.page_layout.span_heading_through
+    }
 }
 
 /// Advance `counters` for a heading at `level` (1-based) and format the
@@ -1093,7 +1195,7 @@ pub fn null_resolver() -> &'static dyn AssetResolver {
 /// Top-level entry: lay out a transformed Markdoc document into blocks.
 pub fn layout_document(root: &RenderableTreeNode, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
     let column_x = ctx.style.margin_x;
-    let column_w = ctx.style.page_width - 2.0 * ctx.style.margin_x;
+    let column_w = ctx.body_column_width();
     layout_node(root, column_x, column_w, ctx)
 }
 
@@ -1278,6 +1380,8 @@ fn build_caption_block(
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -1308,6 +1412,8 @@ fn caption_block_from_str(text: &str, x: f32, width: f32, ctx: &mut LayoutCtx<'_
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -1593,6 +1699,8 @@ fn layout_paragraph(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> V
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     });
     out
 }
@@ -1696,6 +1804,8 @@ pub fn build_toc_blocks(
             anchor_id: None,
 
             tag_role: None,
+            page_column: 0,
+            column_span: style.page_layout.columns > 1,
         });
     }
 
@@ -1742,6 +1852,8 @@ pub fn build_toc_blocks(
             anchor_id: None,
 
             tag_role: None,
+            page_column: 0,
+            column_span: style.page_layout.columns > 1,
         });
     }
 
@@ -1791,6 +1903,8 @@ pub fn build_list_section_blocks(
             anchor_id: None,
 
             tag_role: None,
+            page_column: 0,
+            column_span: style.page_layout.columns > 1,
         });
     }
 
@@ -1827,6 +1941,8 @@ pub fn build_list_section_blocks(
             anchor_id: None,
 
             tag_role: None,
+            page_column: 0,
+            column_span: style.page_layout.columns > 1,
         });
     }
     blocks
@@ -1851,6 +1967,8 @@ fn attr_is_false(t: &Tag, key: &str) -> bool {
 
 fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
     let h = ctx.style.heading.for_level(level).clone();
+    let column_span = ctx.heading_spans_columns(level);
+    let lay_w = if column_span { ctx.body_full_width() } else { width };
 
     // Pull anchor declarations (`{% tag id="X" %}`) out of the heading's
     // children so the id is recorded on the resulting block. Returns
@@ -1914,7 +2032,7 @@ fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<
         font_families: ctx.body_families,
         italic: false,
     };
-    let layout = build_layout(&text, &ranges, &style, width, ctx.font_cx, ctx.layout_cx);
+    let layout = build_layout(&text, &ranges, &style, lay_w, ctx.font_cx, ctx.layout_cx);
     let outline_text = text.clone();
     let slice = TextSlice::whole(layout, text, Vec::new(), x);
     let height = slice.height();
@@ -1935,6 +2053,8 @@ fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<
         anchor_id: Some(resolved_anchor),
 
         tag_role: None,
+        page_column: 0,
+        column_span,
     });
     blocks
 }
@@ -2114,6 +2234,8 @@ fn layout_list(
             anchor_id: None,
 
             tag_role: None,
+            page_column: 0,
+            column_span: false,
         });
     }
 
@@ -2258,6 +2380,8 @@ fn layout_blockquote(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -2336,6 +2460,8 @@ fn layout_code_block(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     };
 
     vec![Block {
@@ -2358,6 +2484,8 @@ fn layout_code_block(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -2553,6 +2681,8 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -2597,6 +2727,8 @@ fn build_callout_label_block(
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -2616,6 +2748,8 @@ fn layout_rule(x: f32, width: f32, style: &Style) -> Block {
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -2639,6 +2773,8 @@ fn toc_marker_block(x: f32) -> Block {
         outline: None,
         anchor_id: Some(TOC_MARKER_ANCHOR.to_string()),
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -2651,6 +2787,8 @@ fn page_break_block() -> Block {
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -2672,6 +2810,8 @@ fn spacer_block(height: f32) -> Block {
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -2971,6 +3111,8 @@ fn wrap_in_panel(inner: Vec<Block>, x: f32, width: f32, bg: rgb::Color, space_af
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -3047,6 +3189,8 @@ fn atomic_group(inner: Vec<Block>, x: f32, width: f32, space_after: f32) -> Bloc
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }
 }
 
@@ -3310,6 +3454,8 @@ fn layout_swatch(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<
             outline: None,
             anchor_id: None,
             tag_role: None,
+            page_column: 0,
+            column_span: false,
         }],
         Err(e) => {
             eprintln!("warning: swatch render failed — {e}");
@@ -3424,6 +3570,8 @@ fn layout_qr(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Bloc
             outline: None,
             anchor_id: None,
             tag_role: None,
+            page_column: 0,
+            column_span: false,
         }],
         Err(e) => {
             eprintln!("warning: qr render failed — {e}");
@@ -3598,6 +3746,8 @@ fn layout_paragraph_float(
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -3749,6 +3899,8 @@ fn layout_float(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -4007,6 +4159,8 @@ fn layout_float_anchored(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>)
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -4166,10 +4320,14 @@ fn layout_input(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         outline: None,
         anchor_id: None,
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
 fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<Block> {
+    let column_span = ctx.page_columns() > 1;
+    let lay_w = if column_span { ctx.body_full_width() } else { width };
     // Per-table style overrides from the `{% table … %}` attributes; a
     // plain pipe table has none, so everything inherits the document style.
     let ov = TableOverride::from_attrs(&tag.attributes);
@@ -4237,7 +4395,7 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
     let padding = ov.cell_padding.unwrap_or(ctx.style.table_cell_padding);
     let border_thickness = ctx.style.table_border_thickness;
     let total_borders = border_thickness * (num_cols as f32 + 1.0);
-    let inner_width = width - total_borders;
+    let inner_width = lay_w - total_borders;
 
     // Decide column widths. Explicit weights win when they match this
     // table's column count; otherwise fall back to the automatic modes.
@@ -4376,6 +4534,8 @@ fn layout_table(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
         outline: None,
         anchor_id: Some(format!("__table_{table_id}")),
         tag_role: None,
+        page_column: 0,
+        column_span,
     }]
 }
 
@@ -4848,16 +5008,16 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
 
     // `size` keyword scales the display width relative to the space available
     // here (a column, a table cell, …): small = 50 %, medium = 75 %, large =
-    // 100 % (the default). `fit_size` never upscales, so a small source image
-    // still renders at its natural size. (Explicit `width` is a float-only
-    // knob; `size` is the general one.)
+    // 100 %. The default (no attribute) is 75 %. `fit_size` never upscales,
+    // so a small source image still renders at its natural size.
     let avail = match tag.attributes.get("size") {
         Some(Scalar::String(s)) => match s.trim() {
             "small" => width * 0.5,
             "medium" => width * 0.75,
-            _ => width, // "large" or anything unrecognised → full width
+            "large" => width,
+            _ => width * 0.75,
         },
-        _ => width,
+        _ => width * 0.75,
     };
 
     // Fetch the first candidate that resolves. A missing file fails the
@@ -4950,6 +5110,8 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                 outline: None,
                 anchor_id: Some(format!("__figure_{figure_id}")),
                 tag_role: None,
+                page_column: 0,
+                column_span: false,
             };
             let visible = if had_caption_tag { None } else { caption_attr };
             finish_media(block, visible, x, width, ctx)
@@ -4985,6 +5147,8 @@ fn layout_media(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec<B
                         outline: None,
                         anchor_id: Some(format!("__figure_{figure_id}")),
                         tag_role: None,
+                        page_column: 0,
+                        column_span: false,
                     };
                     let visible = if had_caption_tag { None } else { caption_attr };
                     finish_media(block, visible, x, width, ctx)
@@ -5053,6 +5217,8 @@ fn placeholder(x: f32, width: f32, ctx: &mut LayoutCtx<'_>, message: &str) -> Ve
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 
@@ -5103,6 +5269,8 @@ fn layout_table_cell_paragraph(
         anchor_id: None,
 
         tag_role: None,
+        page_column: 0,
+        column_span: false,
     }]
 }
 

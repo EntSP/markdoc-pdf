@@ -182,7 +182,10 @@ fn build_pdf() -> Vec<u8> {
 
     // 4. Embed an SVG callout below the paragraph as native PDF vectors.
     let svg_tree = {
-        let mut fontdb = fontdb::Database::new();
+        // usvg re-exports the fontdb it was built against — go through
+        // that rather than a direct dependency, so the version can't
+        // drift out of step with usvg's own.
+        let mut fontdb = usvg::fontdb::Database::new();
         fontdb.load_system_fonts();
         let opts = usvg::Options {
             fontdb: Arc::new(fontdb),

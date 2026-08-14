@@ -150,9 +150,8 @@ emits PDF. The split keeps:
 
 - `markdoc` reusable from anywhere (web renderer, validators,
   CLIs that never touch PDF).
-- The PDF stack (krilla, parley, usvg, fontdb, hyphenation,
-  image) out of every consumer that doesn't need it — and it's a
-  big stack.
+- The PDF stack (krilla, parley, usvg, hyphenation, image) out of
+  every consumer that doesn't need it — and it's a big stack.
 - Output formats addable without forking the parser. A future
   `markdoc-epub` slots in alongside.
 
@@ -170,9 +169,8 @@ Notable crates this pulls in:
 | Crate | Why |
 |-------|-----|
 | [`krilla`](https://crates.io/crates/krilla) + `krilla-svg` | PDF emit; SVG conversion |
-| [`parley`](https://crates.io/crates/parley) | Text shaping and line breaking |
+| [`parley`](https://crates.io/crates/parley) | Text shaping, line breaking, and font discovery (via its `fontique` collection — system fonts plus anything in `font_paths`) |
 | [`usvg`](https://crates.io/crates/usvg) | SVG parsing |
-| [`fontdb`](https://crates.io/crates/fontdb) | Font discovery |
 | [`image`](https://crates.io/crates/image) | Raster image decode |
 | [`hyphenation`](https://crates.io/crates/hyphenation) | Embedded en-US patterns |
 | `clap`, `toml`, `serde`, `time`, `ureq`, `thiserror` | CLI / config / IO plumbing |

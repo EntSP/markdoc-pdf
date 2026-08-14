@@ -24,7 +24,7 @@ use crate::assets::{AssetResolver, MediaFormat, sniff_format};
 
 use super::TemplateContext;
 use super::style::{HeaderFooterStyle, LogoSpec, Style};
-use super::text::{TextStyle, build_layout, build_layout_aligned, default_families, emit_layout};
+use super::text::{TextStyle, build_layout, build_layout_aligned, emit_layout};
 
 /// A decoded image / SVG asset ready to draw. Raster formats are
 /// decoded to a krilla Image; SVG sources parse into a usvg Tree shared
@@ -46,6 +46,7 @@ pub type MediaCache = HashMap<String, Option<DecodedMedia>>;
 pub fn emit_header(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     header: &HeaderFooterStyle,
     tctx: &TemplateContext<'_>,
     font_cx: &mut FontContext,
@@ -64,6 +65,7 @@ pub fn emit_header(
     emit_three_slots(
         surface,
         style,
+        families,
         header,
         tctx,
         text_top,
@@ -86,6 +88,7 @@ pub fn emit_header(
 pub fn emit_footer(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     footer: &HeaderFooterStyle,
     tctx: &TemplateContext<'_>,
     font_cx: &mut FontContext,
@@ -109,6 +112,7 @@ pub fn emit_footer(
     emit_three_slots(
         surface,
         style,
+        families,
         footer,
         tctx,
         text_top,
@@ -134,6 +138,7 @@ pub fn emit_footer(
 pub fn emit_last_page_qr(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     spec: &super::style::LastPageQr,
     tctx: &TemplateContext<'_>,
     font_cx: &mut FontContext,
@@ -199,7 +204,7 @@ pub fn emit_last_page_qr(
             font_weight: 400.0,
             line_height: 1.2,
             color: spec.color.into(),
-            font_families: default_families(),
+            font_families: families,
             italic: false,
         };
         let layout = build_layout_aligned(
@@ -238,6 +243,7 @@ pub fn emit_last_page_qr(
 pub fn emit_notice_banner(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     banner: &super::style::NoticeBanner,
     band_top: f32,
     tctx: &TemplateContext<'_>,
@@ -263,7 +269,7 @@ pub fn emit_notice_banner(
     //    rule's y is known, so it sits just above the rule. ──────────────
     let label_text = tctx.substitute(&banner.label);
     let label_layout = (!label_text.trim().is_empty()).then(|| {
-        let st = banner_text_style(banner.label_color, banner.label_font_size);
+        let st = banner_text_style(banner.label_color, banner.label_font_size, families);
         build_layout(&label_text, &[], &st, right - left, font_cx, layout_cx)
     });
     let label_w = label_layout
@@ -306,14 +312,22 @@ pub fn emit_notice_banner(
     }
     if !banner.logo_subtitle.trim().is_empty() {
         let s = tctx.substitute(&banner.logo_subtitle);
-        let st = banner_text_style(banner.logo_subtitle_color, banner.logo_subtitle_font_size);
+        let st = banner_text_style(
+            banner.logo_subtitle_color,
+            banner.logo_subtitle_font_size,
+            families,
+        );
         let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
         emit_layout(surface, &layout, &s, left, y + 1.0, font_cache, 0..1, 0.0);
         y += banner.logo_subtitle_font_size * 1.4;
     }
     if !banner.disclaimer.trim().is_empty() {
         let s = tctx.substitute(&banner.disclaimer);
-        let st = banner_text_style(banner.disclaimer_color, banner.disclaimer_font_size);
+        let st = banner_text_style(
+            banner.disclaimer_color,
+            banner.disclaimer_font_size,
+            families,
+        );
         let avail = (right_block_left - left).max(40.0);
         let layout = build_layout(&s, &[], &st, avail, font_cx, layout_cx);
         let lines = layout
@@ -330,7 +344,7 @@ pub fn emit_notice_banner(
     // regardless of how many lines the disclaimer wrapped to.
     if !banner.note.trim().is_empty() {
         let s = tctx.substitute(&banner.note);
-        let st = banner_text_style(banner.note_color, banner.note_font_size);
+        let st = banner_text_style(banner.note_color, banner.note_font_size, families);
         let layout = build_layout(&s, &[], &st, right - left, font_cx, layout_cx);
         emit_layout(surface, &layout, &s, left, y + 2.0, font_cache, 0..1, 0.0);
         y += banner.note_font_size * 1.3 + 2.0;
@@ -382,13 +396,17 @@ pub fn emit_notice_banner(
     }
 }
 
-fn banner_text_style(color: super::style::ColorRgb, font_size: f32) -> TextStyle<'static> {
+fn banner_text_style(
+    color: super::style::ColorRgb,
+    font_size: f32,
+    families: &'static [&'static str],
+) -> TextStyle<'static> {
     TextStyle {
         font_size,
         font_weight: 400.0,
         line_height: 1.25,
         color: color.into(),
-        font_families: default_families(),
+        font_families: families,
         italic: false,
     }
 }
@@ -421,6 +439,7 @@ fn stroke_hline(
 fn emit_three_slots(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     spec: &HeaderFooterStyle,
     tctx: &TemplateContext<'_>,
     text_top: f32,
@@ -438,7 +457,7 @@ fn emit_three_slots(
         font_weight: 400.0,
         line_height: 1.2,
         color: spec.color.into(),
-        font_families: default_families(),
+        font_families: families,
         italic: false,
     };
 
@@ -611,6 +630,7 @@ pub(super) fn decode_media(src: &str, assets: &dyn AssetResolver) -> Option<Deco
 pub fn emit_watermark(
     surface: &mut krilla::surface::Surface<'_>,
     style: &Style,
+    families: &'static [&'static str],
     watermark: &super::style::Watermark,
     page_idx: usize,
     font_cx: &mut FontContext,
@@ -677,7 +697,7 @@ pub fn emit_watermark(
                 font_weight: 700.0,
                 line_height: 1.0,
                 color: t.color.into(),
-                font_families: default_families(),
+                font_families: families,
                 italic: false,
             };
             // Use Start alignment + manual centring: parley's `offset` is 0 so

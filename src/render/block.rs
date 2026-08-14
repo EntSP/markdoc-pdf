@@ -20,7 +20,7 @@ use super::style::Style;
 use super::style::TableColumnSizing;
 use super::text::{
     FloatSpec, TextStyle, build_layout, build_layout_aligned, build_layout_float,
-    build_layout_float_anchored, measure_first_line_width, monospace_families,
+    build_layout_float_anchored, measure_first_line_width,
 };
 
 /// One unit of paginatable content.
@@ -1004,7 +1004,14 @@ pub struct LayoutCtx<'a> {
     /// `Style::body_font_families` (or the bundled Noto defaults when
     /// empty). Layout sites use this in place of `default_families()`
     /// so caller-specified custom fonts apply to all body text.
+    ///
+    /// Equal to `fonts.body`; kept as its own field because most
+    /// layout sites want exactly the body list.
     pub body_families: &'a [&'static str],
+    /// Per-element font families (headings, callouts, code, …). Sites
+    /// that render a specific element pull from here instead of
+    /// `body_families`, so a style can give headings their own face.
+    pub fonts: &'a super::fonts::Fonts,
     /// Optional word hyphenator. When present, plain-text body
     /// paragraphs (no bold/italic/links/anchors/footnotes) get soft
     /// hyphens inserted before parley layout so wrapped lines can
@@ -1911,7 +1918,7 @@ fn layout_heading(tag: &Tag, level: u8, x: f32, width: f32, ctx: &mut LayoutCtx<
         font_weight: h.font_weight,
         line_height: ctx.style.body_line_height,
         color: h.color.unwrap_or(ctx.style.text_color).into(),
-        font_families: ctx.body_families,
+        font_families: ctx.fonts.heading(level),
         italic: false,
     };
     let layout = build_layout(&text, &ranges, &style, width, ctx.font_cx, ctx.layout_cx);
@@ -2033,7 +2040,7 @@ fn layout_list(
             font_weight: 400.0,
             line_height: ctx.style.body_line_height,
             color: marker_color,
-            font_families: ctx.body_families,
+            font_families: ctx.fonts.list_marker,
             italic: false,
         };
         let marker_layout = build_layout(
@@ -2275,15 +2282,14 @@ fn layout_code_block(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> 
     let inner_x = x + padding;
     let inner_w = width - 2.0 * padding;
 
-    let mono_families = monospace_families(&ctx.style.code_font_family);
-    // SAFETY: monospace_families returns &'static str entries.
-    let leaked: Vec<&'static str> = mono_families.into_iter().collect();
     let style = TextStyle {
         font_size: ctx.style.code_font_size,
         font_weight: 400.0,
         line_height: ctx.style.body_line_height,
         color: ctx.style.code_text_color.into(),
-        font_families: Box::leak(leaked.into_boxed_slice()),
+        // Resolved once per render — this used to call
+        // `monospace_families` and leak a fresh slice per code block.
+        font_families: ctx.fonts.code,
         italic: false,
     };
 
@@ -2488,6 +2494,7 @@ fn layout_callout(tag: &Tag, x: f32, width: f32, ctx: &mut LayoutCtx<'_>) -> Vec
             content_w,
             cs.label_color.unwrap_or(ctx.style.text_color).into(),
             cs.label_centered,
+            ctx.fonts.callout(kind),
             ctx,
         );
         // In the rules framing the body flows beneath the icon, so the
@@ -2565,6 +2572,7 @@ fn build_callout_label_block(
     width: f32,
     color: rgb::Color,
     centered: bool,
+    families: &'static [&'static str],
     ctx: &mut LayoutCtx<'_>,
 ) -> Block {
     let style = TextStyle {
@@ -2572,7 +2580,7 @@ fn build_callout_label_block(
         font_weight: 700.0,
         line_height: ctx.style.body_line_height,
         color,
-        font_families: ctx.body_families,
+        font_families: families,
         italic: false,
     };
     let layout = if centered {

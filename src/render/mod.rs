@@ -13,6 +13,7 @@ mod block;
 mod coverpage;
 mod decoration;
 mod emit;
+mod fonts;
 mod highlight;
 mod hyphen;
 mod inline;
@@ -205,18 +206,16 @@ pub fn render_pdf_with(
             .collection
             .load_fonts_from_paths(style.font_paths.iter().map(std::path::Path::new));
     }
-    // Resolve the effective body family list once and leak into a
-    // 'static slice so layout sites can reference it cheaply.
-    let body_families: &'static [&'static str] = if style.body_font_families.is_empty() {
-        text::default_families()
-    } else {
-        let leaked: Vec<&'static str> = style
-            .body_font_families
-            .iter()
-            .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
-            .collect();
-        Box::leak(leaked.into_boxed_slice())
-    };
+    // Resolve every element's font families once, up front. Elements
+    // that don't override anything share the body slice, so this costs
+    // what the old single-list resolution did unless the style actually
+    // asks for per-element fonts. See `fonts::Fonts`.
+    let fonts = fonts::Fonts::resolve(style);
+    let body_families: &'static [&'static str] = fonts.body;
+    // Inline code is styled deep in layout where only a `TextStyle` is
+    // in scope; this hands it the resolved code families for the
+    // duration of the render and restores the previous list on drop.
+    let _code_families = text::CodeFamiliesGuard::install(fonts.code);
     let hyphenator = hyphen::WordHyphenator::from_style(&style.hyphenation);
 
     // 1. Layout.
@@ -233,6 +232,7 @@ pub fn render_pdf_with(
             pending_figure_caption: None,
             footnotes: Vec::new(),
             body_families,
+            fonts: &fonts,
             hyphenator: hyphenator.as_ref(),
             heading_counters: [0; 6],
             list_depth: 0,
@@ -261,7 +261,7 @@ pub fn render_pdf_with(
         let mut fp = coverpage::build_coverpage_blocks(
             style,
             ctx,
-            body_families,
+            fonts.coverpage,
             assets,
             &mut font_cx,
             &mut layout_cx,
@@ -359,7 +359,7 @@ pub fn render_pdf_with(
             let pool = block::build_footnote_pool_blocks(
                 &entries,
                 style,
-                body_families,
+                fonts.footnote,
                 &mut font_cx,
                 &mut layout_cx,
                 inner_x,
@@ -389,7 +389,7 @@ pub fn render_pdf_with(
         build_with_front_matter_pools(
             body_with_pools,
             style,
-            body_families,
+            &fonts,
             &mut font_cx,
             &mut layout_cx,
             page_budget,
@@ -462,6 +462,7 @@ pub fn render_pdf_with(
                 decoration::emit_watermark(
                     &mut surface,
                     style,
+                    fonts.watermark,
                     wm,
                     page_idx,
                     &mut font_cx,
@@ -535,6 +536,7 @@ pub fn render_pdf_with(
                     decoration::emit_header(
                         &mut surface,
                         style,
+                        fonts.header,
                         header,
                         &tctx,
                         &mut font_cx,
@@ -549,6 +551,7 @@ pub fn render_pdf_with(
                     decoration::emit_footer(
                         &mut surface,
                         style,
+                        fonts.footer,
                         footer,
                         &tctx,
                         &mut font_cx,
@@ -563,6 +566,7 @@ pub fn render_pdf_with(
                     decoration::emit_notice_banner(
                         &mut surface,
                         style,
+                        fonts.notice_banner,
                         banner,
                         banner_band_top,
                         &tctx,
@@ -583,6 +587,7 @@ pub fn render_pdf_with(
                 decoration::emit_last_page_qr(
                     &mut surface,
                     style,
+                    fonts.qr,
                     qr,
                     &tctx,
                     &mut font_cx,
@@ -899,7 +904,7 @@ fn build_outline(points: &[(usize, emit::OutlinePoint)]) -> Outline {
 fn build_with_front_matter_pools(
     mut body_with_pools: Vec<(Vec<block::Block>, Vec<block::Block>)>,
     style: &Style,
-    body_families: &'static [&'static str],
+    fonts: &fonts::Fonts,
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     page_budget: f32,
@@ -910,7 +915,7 @@ fn build_with_front_matter_pools(
     let (start_pages, _body_through, end_pages) = build_front_matter_split(
         body_pages,
         style,
-        body_families,
+        fonts,
         font_cx,
         layout_cx,
         page_budget,
@@ -948,7 +953,7 @@ type FrontMatterPages = (
 fn build_front_matter_split(
     body_pages: Vec<Vec<block::Block>>,
     style: &Style,
-    body_families: &'static [&'static str],
+    fonts: &fonts::Fonts,
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<krilla::color::rgb::Color>,
     page_budget: f32,
@@ -986,8 +991,7 @@ fn build_front_matter_split(
                     ),
                 })
                 .collect();
-            let blocks =
-                block::build_toc_blocks(&entries, style, body_families, font_cx, layout_cx);
+            let blocks = block::build_toc_blocks(&entries, style, fonts.toc, font_cx, layout_cx);
             let pages = paginate::paginate(blocks, page_budget);
             push_section(&mut start_pages, &mut end_pages, style.toc.position, pages);
         }
@@ -1014,7 +1018,7 @@ fn build_front_matter_split(
                 style.lof.entry_space_after,
                 &entries,
                 style,
-                body_families,
+                fonts.lof,
                 font_cx,
                 layout_cx,
             );
@@ -1044,7 +1048,7 @@ fn build_front_matter_split(
                 style.lot.entry_space_after,
                 &entries,
                 style,
-                body_families,
+                fonts.lot,
                 font_cx,
                 layout_cx,
             );

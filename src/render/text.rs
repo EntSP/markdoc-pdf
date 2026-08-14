@@ -94,10 +94,62 @@ pub fn default_families() -> &'static [&'static str] {
     ]
 }
 
+/// Monospace fallback chain for code, led by the configured family.
+///
+/// `primary` comes from `Style::code_font_family`. The bundled Noto
+/// mono/sans pair stays behind it so glyphs the chosen face lacks
+/// still resolve — a code block containing CJK or box-drawing
+/// characters keeps rendering when the writer picks a Latin-only
+/// programming font.
+///
+/// Resolve this ONCE per render (see `fonts::Fonts::code`) rather than
+/// per code block: a custom `primary` has to be leaked to reach
+/// `&'static str`, so calling it per block would leak per block.
 pub fn monospace_families(primary: &str) -> Vec<&'static str> {
-    // Best-effort: Noto Sans Mono is broadly available.
-    let _ = primary; // primary is currently fixed to Noto Sans Mono in style
-    vec!["Noto Sans Mono", "Noto Sans"]
+    let mut out = Vec::with_capacity(3);
+    let trimmed = primary.trim();
+    if !trimmed.is_empty() && trimmed != "Noto Sans Mono" {
+        out.push(Box::leak(trimmed.to_owned().into_boxed_str()) as &'static str);
+    }
+    out.push("Noto Sans Mono");
+    out.push("Noto Sans");
+    out
+}
+
+thread_local! {
+    /// Code families for the render in flight on this thread.
+    ///
+    /// Inline code (`InlineProp::Code`) is applied deep inside layout,
+    /// where only a `TextStyle` is in scope — there is no path to the
+    /// document `Style` without threading a seventh field through some
+    /// forty `TextStyle` literals. A thread-local set once per render
+    /// keeps inline code honouring `code_font_family` without that
+    /// churn. Renders on different threads keep their own value, so
+    /// two concurrent renders with different styles don't interfere.
+    static CODE_FAMILIES: std::cell::Cell<&'static [&'static str]> =
+        const { std::cell::Cell::new(&["Noto Sans Mono", "Noto Sans"]) };
+}
+
+/// Installs the code families for the duration of one render and puts
+/// the previous value back on drop, so an early return from a failed
+/// render can't leave a stale family list behind for the next one.
+pub struct CodeFamiliesGuard(&'static [&'static str]);
+
+impl CodeFamiliesGuard {
+    pub fn install(families: &'static [&'static str]) -> Self {
+        Self(CODE_FAMILIES.with(|c| c.replace(families)))
+    }
+}
+
+impl Drop for CodeFamiliesGuard {
+    fn drop(&mut self) {
+        CODE_FAMILIES.with(|c| c.set(self.0));
+    }
+}
+
+/// The code families installed for this thread's current render.
+fn code_families() -> &'static [&'static str] {
+    CODE_FAMILIES.with(|c| c.get())
 }
 
 /// Build a parley Layout for the given text, applying inline ranges.
@@ -172,9 +224,9 @@ fn build_unbroken(
                 // Inline code: switch this range to the monospace family so
                 // it stands out from prose. Size and colour stay the body's
                 // so it baselines cleanly mid-sentence.
-                let mono: Vec<FontFamilyName<'static>> = monospace_families("Noto Sans Mono")
-                    .into_iter()
-                    .map(|f| FontFamilyName::Named(Cow::Borrowed(f)))
+                let mono: Vec<FontFamilyName<'static>> = code_families()
+                    .iter()
+                    .map(|f| FontFamilyName::Named(Cow::Borrowed(*f)))
                     .collect();
                 builder.push(
                     StyleProperty::FontFamily(FontFamily::List(Cow::Owned(mono))),

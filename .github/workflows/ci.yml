@@ -58,7 +58,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev
+          # fonts-liberation: the per-element font tests need two distinct
+          # installed families to tell elements apart. macOS and Windows
+          # ship suitable ones; don't rely on the Linux runner's defaults.
+          sudo apt-get install -y libfontconfig1-dev fonts-liberation
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2

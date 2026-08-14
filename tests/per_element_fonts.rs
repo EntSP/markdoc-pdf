@@ -15,9 +15,14 @@
 //! `fontique` silently skips families it can't find. A test naming
 //! "Liberation Serif" would therefore pass on Fedora and quietly
 //! degrade to a meaningless tautology on a runner without it. So the
-//! suite first probes for two visually distinct families that ARE
-//! installed and uses those. If it can't find two, it fails with an
-//! actionable message rather than a confusing assertion diff.
+//! suite first probes for two distinct families that ARE installed and
+//! uses those. If it can't find two, it fails with an actionable
+//! message rather than a confusing assertion diff.
+//!
+//! The probe list must cover every platform CI runs on — Linux, macOS
+//! and Windows each ship a different font inventory. Rendering itself
+//! is portable (a document with no style renders fine everywhere);
+//! only the family *names* differ. See `two_installed_families`.
 
 use markdoc::types::Config;
 use markdoc::{parse, transform};
@@ -57,11 +62,21 @@ fn is_installed(family: &str) -> bool {
     embeds_font(&render(PROBE_DOC, &style), family)
 }
 
-/// Two distinct installed families, or a clear failure. Candidates are
-/// ordered by how widely they ship on Linux CI images; each pair is
-/// visually distinguishable so a human can eyeball the output too.
+/// Two distinct installed families, or a clear failure.
+///
+/// The list spans all three CI platforms deliberately. Rendering
+/// itself is portable — what isn't is the *inventory*: Linux ships
+/// Liberation / DejaVu, macOS ships Helvetica / Times / Courier, and
+/// Windows ships Arial / Times New Roman / Segoe UI. An earlier
+/// Linux-only list left the macOS and Windows jobs finding zero
+/// candidates and failing here, so keep every platform represented
+/// when editing this.
+///
+/// Only two are needed and the first two found win; the rest are
+/// fallbacks for leaner images.
 fn two_installed_families() -> (String, String) {
     const CANDIDATES: &[&str] = &[
+        // Linux — Liberation and DejaVu are near-universal.
         "Liberation Serif",
         "Liberation Sans",
         "Liberation Mono",
@@ -72,6 +87,24 @@ fn two_installed_families() -> (String, String) {
         "Noto Sans",
         "FreeSerif",
         "FreeSans",
+        // macOS core fonts.
+        "Helvetica",
+        "Times",
+        "Courier",
+        "Menlo",
+        "Monaco",
+        "Geneva",
+        // Windows core fonts.
+        "Segoe UI",
+        "Consolas",
+        "Calibri",
+        "Tahoma",
+        "Verdana",
+        // Ship on both macOS and Windows.
+        "Arial",
+        "Times New Roman",
+        "Courier New",
+        "Georgia",
     ];
     let found: Vec<String> = CANDIDATES
         .iter()
@@ -83,7 +116,9 @@ fn two_installed_families() -> (String, String) {
         found.len() == 2,
         "per-element font tests need two distinct installed font families to \
          tell elements apart, but found {} of: {CANDIDATES:?}. \
-         Install e.g. liberation-fonts or fonts-dejavu and re-run.",
+         On Linux install e.g. fonts-liberation (Debian/Ubuntu) or \
+         liberation-fonts (Fedora); macOS and Windows ship suitable \
+         families already.",
         found.len()
     );
     (found[0].clone(), found[1].clone())

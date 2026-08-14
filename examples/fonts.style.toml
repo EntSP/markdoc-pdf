@@ -1,0 +1,61 @@
+# Per-element fonts — a different face for each part of the document.
+#
+# Render:
+#   ./target/release/markdoc-pdf \
+#       --input  examples/fonts.mdoc \
+#       --output fonts.pdf \
+#       --style  examples/fonts.style.toml
+#
+# Every list here is a FALLBACK CHAIN: families that aren't installed
+# are skipped silently, so the second and third entries keep the
+# contrast on a machine that lacks the first. Liberation and DejaVu
+# ship on nearly every Linux distribution, which is why they're used
+# rather than anything branded.
+#
+# An empty or absent `font_families` inherits `body_font_families`,
+# which in turn falls back to the bundled Noto set. Note the chain
+# REPLACES rather than extends, so a Latin-only face drops the
+# multi-script fallbacks for that element — see `scripts.mdoc` if the
+# document isn't Latin-only.
+
+# ── Document default: a serif face for running prose ──────────────────
+body_font_families = ["Liberation Serif", "DejaVu Serif", "Noto Serif"]
+
+# ── Code: monospace, shared by fenced blocks AND inline code ──────────
+code_font_family = "Liberation Mono"
+
+# ── Headings h1–h3: sans, for contrast against the serif body ─────────
+[heading.h1]
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+
+[heading.h2]
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+
+[heading.h3]
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+
+# h4–h6 deliberately set nothing: they inherit the serif body face, so
+# the example shows inheritance and override side by side.
+
+# ── Callouts: per kind, so they need not agree ────────────────────────
+[callout_styles.note]
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+
+# `warning` sets no font — it inherits the body face.
+
+# ── Front matter ──────────────────────────────────────────────────────
+[toc]
+enabled = true
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+
+# ── Running header / footer: sans, and independently settable ─────────
+[page_decoration.header]
+left = "{title}"
+right = "{chapter}"
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+rule = true
+
+[page_decoration.footer]
+center = "Page {page} of {total}"
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+rule = true

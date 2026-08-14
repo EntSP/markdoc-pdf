@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ColorRgb {
     pub r: u8,
     pub g: u8,
@@ -29,7 +30,7 @@ impl From<ColorRgb> for krilla::color::rgb::Color {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeadingStyle {
     pub font_size: f32,
     pub font_weight: f32,
@@ -39,11 +40,22 @@ pub struct HeadingStyle {
     /// body `text_color` when unset; set it (e.g. to a brand colour)
     /// to tint headings independently of body text.
     pub color: Option<ColorRgb>,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for HeadingStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             font_size: 14.0,
             font_weight: 700.0,
             space_before: 12.0,
@@ -54,7 +66,7 @@ impl Default for HeadingStyle {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeadingStyles {
     pub h1: HeadingStyle,
     pub h2: HeadingStyle,
@@ -73,6 +85,7 @@ impl Default for HeadingStyles {
                 space_before: 18.0,
                 space_after: 12.0,
                 color: None,
+                font_families: Vec::new(),
             },
             h2: HeadingStyle {
                 font_size: 21.0,
@@ -80,6 +93,7 @@ impl Default for HeadingStyles {
                 space_before: 16.0,
                 space_after: 10.0,
                 color: None,
+                font_families: Vec::new(),
             },
             h3: HeadingStyle {
                 font_size: 17.0,
@@ -87,6 +101,7 @@ impl Default for HeadingStyles {
                 space_before: 14.0,
                 space_after: 8.0,
                 color: None,
+                font_families: Vec::new(),
             },
             h4: HeadingStyle {
                 font_size: 14.0,
@@ -94,6 +109,7 @@ impl Default for HeadingStyles {
                 space_before: 12.0,
                 space_after: 6.0,
                 color: None,
+                font_families: Vec::new(),
             },
             h5: HeadingStyle {
                 font_size: 12.0,
@@ -101,6 +117,7 @@ impl Default for HeadingStyles {
                 space_before: 10.0,
                 space_after: 6.0,
                 color: None,
+                font_families: Vec::new(),
             },
             h6: HeadingStyle {
                 font_size: 11.0,
@@ -108,6 +125,7 @@ impl Default for HeadingStyles {
                 space_before: 10.0,
                 space_after: 4.0,
                 color: None,
+                font_families: Vec::new(),
             },
         }
     }
@@ -141,7 +159,7 @@ impl HeadingStyles {
 /// sections (copyright, preface) that should precede `1.` without
 /// consuming a number.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeadingNumbering {
     /// Master switch. When `false` (the default) no numbering happens.
     pub enabled: bool,
@@ -179,7 +197,7 @@ pub enum CalloutDecoration {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct CalloutStyle {
     pub background: ColorRgb,
     pub border: ColorRgb,
@@ -203,11 +221,22 @@ pub struct CalloutStyle {
     /// box's top-left, with the label and body indented past it. Empty /
     /// unset renders no icon.
     pub icon: String,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for CalloutStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             background: ColorRgb::new(247, 248, 250),
             border: ColorRgb::new(220, 225, 230),
             accent: ColorRgb::new(120, 130, 145),
@@ -225,7 +254,7 @@ impl Default for CalloutStyle {
 /// these only affect the glyphs underneath so readers spot the link
 /// without hovering.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LinkStyle {
     /// Text colour applied to the link's glyphs.
     pub color: ColorRgb,
@@ -260,7 +289,7 @@ impl Default for LinkStyle {
 /// without a recognised name (or `language` attribute) fall back to
 /// `code_text_color`.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct CodeHighlightStyle {
     pub keyword: ColorRgb,
     pub string: ColorRgb,
@@ -280,7 +309,7 @@ impl Default for CodeHighlightStyle {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct CalloutStyles {
     pub note: CalloutStyle,
     pub info: CalloutStyle,
@@ -358,7 +387,7 @@ impl CalloutStyles {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Style {
     /// Schema-version stamp; reserved for future incompatible bumps.
     pub schema_version: u32,
@@ -623,7 +652,7 @@ impl Default for Style {
 
 /// A page-level watermark. Use the `kind` field to pick image vs text.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Watermark {
     pub kind: WatermarkKind,
     /// 0.0 (fully transparent) to 1.0 (fully opaque). Defaults to 0.15
@@ -674,11 +703,22 @@ pub struct WatermarkText {
     pub font_size: f32,
     pub color: ColorRgb,
     pub rotation_deg: f32,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for WatermarkText {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             text: "DRAFT".to_string(),
             font_size: 96.0,
             color: ColorRgb::new(180, 180, 180),
@@ -752,7 +792,7 @@ impl TextAlign {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct CoverPageStyle {
     pub enabled: bool,
     /// Horizontal page margin for the cover page only, in points. Defaults
@@ -827,11 +867,22 @@ pub struct CoverPageStyle {
     /// double-sided printing. Useful for printed reports / books;
     /// no effect when the document is read on screen.
     pub blank_page_after: bool,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for CoverPageStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             enabled: false,
             margin_x: None,
             margin_y: None,
@@ -886,7 +937,7 @@ pub enum MarkerSequence {
 /// unaffected; these knobs shape ordered-list numbering and the
 /// optional circular badge treatment.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ListMarkerStyle {
     /// Ordered-list numbering style per nesting depth — index 0 is the
     /// outermost list, deeper levels cycle through the list (wrapping
@@ -904,11 +955,22 @@ pub struct ListMarkerStyle {
     pub badge_text_color: Option<ColorRgb>,
     /// Badge diameter as a multiple of the marker font size.
     pub badge_scale: f32,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for ListMarkerStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             ordered_sequences: Vec::new(),
             badge: false,
             badge_fill: ColorRgb::new(223, 227, 232),
@@ -940,7 +1002,7 @@ impl ListMarkerStyle {
 /// `.bincode` pattern file built with the `hyphenation` crate's
 /// `build_dictionaries` feature, supplied via `dictionary_path`.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HyphenationStyle {
     pub enabled: bool,
     /// Language tag (e.g. `"en-us"`). The bundled tag is `"en-us"`;
@@ -967,7 +1029,7 @@ impl Default for HyphenationStyle {
 
 /// Per-page footnote pool styling.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct FootnoteStyle {
     /// Body font size for footnote entries (typically smaller than
     /// body text — e.g. 9pt against an 11pt body).
@@ -988,11 +1050,22 @@ pub struct FootnoteStyle {
     pub rule_thickness: f32,
     pub rule_color: ColorRgb,
     pub text_color: ColorRgb,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for FootnoteStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             font_size: 9.0,
             line_height: 1.35,
             entry_space_after: 3.0,
@@ -1013,7 +1086,7 @@ impl Default for FootnoteStyle {
 /// `{% tagref %}` uses, with synthetic anchor ids assigned to every
 /// heading).
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TocStyle {
     pub enabled: bool,
     pub position: TocPosition,
@@ -1029,11 +1102,22 @@ pub struct TocStyle {
     pub entry_indent_per_level: f32,
     /// Maximum heading level included (1 = h1 only, 6 = all).
     pub max_depth: u8,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for TocStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             enabled: false,
             position: TocPosition::Start,
             title: "Table of Contents".to_string(),
@@ -1102,7 +1186,7 @@ pub enum TableBorders {
 /// the renderer pick a sensible default per section ("List of Figures"
 /// for `lof`, "List of Tables" for `lot`).
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ListSectionStyle {
     pub enabled: bool,
     pub position: TocPosition,
@@ -1113,6 +1197,16 @@ pub struct ListSectionStyle {
     pub entry_font_size: f32,
     #[serde(default = "default_list_entry_space_after")]
     pub entry_space_after: f32,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 fn default_list_title_size() -> f32 {
@@ -1168,7 +1262,7 @@ pub enum PdfExportProfile {
 ///   - `{title}`   — document title (set via `Style::with_title()` at runtime)
 ///   - `{chapter}` — most recent h1 heading text on or before this page
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PageDecorationStyle {
     pub header: Option<HeaderFooterStyle>,
     pub footer: Option<HeaderFooterStyle>,
@@ -1194,7 +1288,7 @@ pub struct PageDecorationStyle {
 /// doesn't resolve (no such field) skips the stamp entirely, and an empty
 /// resolved `label` hides the caption.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LastPageQr {
     /// Template for the data encoded in the code.
     pub value: String,
@@ -1226,11 +1320,22 @@ pub struct LastPageQr {
     /// last page carrying body content. Off by default (the stamp avoids the
     /// blank filler). No effect when there is no padding page.
     pub include_padding_page: bool,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for LastPageQr {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             value: "{documentNumber}".to_string(),
             label: "{documentNumber}".to_string(),
             size: 54.0,
@@ -1256,7 +1361,7 @@ impl Default for LastPageQr {
 /// simply skipped. The band reserves `height` points at the top of the
 /// page so body content never collides with it.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NoticeBanner {
     /// Reserved vertical space (pt) from the page top.
     pub height: f32,
@@ -1289,11 +1394,22 @@ pub struct NoticeBanner {
     pub rule: bool,
     pub rule_color: ColorRgb,
     pub rule_thickness: f32,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 impl Default for NoticeBanner {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             height: 100.0,
             logo: None,
             logo_subtitle: String::new(),
@@ -1318,7 +1434,7 @@ impl Default for NoticeBanner {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeaderFooterStyle {
     pub left: String,
     pub center: String,
@@ -1357,13 +1473,23 @@ pub struct HeaderFooterStyle {
     /// on the page, so the same page never mixes two chapters'
     /// headers. Empty string slots fall back to the parent.
     pub per_chapter: HashMap<String, HeaderFooterSlots>,
+    /// Font families for this element, in fallback order. Empty means
+    /// "inherit the document body families" (`body_font_families`, or
+    /// the bundled Noto defaults when that is also empty). Names must
+    /// be families the font collection knows — either system-installed
+    /// or exposed by a file listed in `font_paths`.
+    ///
+    /// Note this REPLACES the body list rather than extending it, so a
+    /// Latin-only face here will lose the multi-script fallbacks. List
+    /// the scripts you need explicitly if the document is not Latin-only.
+    pub font_families: Vec<String>,
 }
 
 /// Just the three slot templates — used for even-page variants and
 /// per-chapter overrides. Empty fields fall back to the parent
 /// `HeaderFooterStyle`'s slot.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeaderFooterSlots {
     pub left: String,
     pub center: String,
@@ -1375,7 +1501,7 @@ pub struct HeaderFooterSlots {
 /// and caches the result by URI, so repeating the same logo across
 /// pages costs the same as decoding it for one page.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LogoSpec {
     /// Asset URI — anything the configured asset resolver understands
     /// (`file://path`, relative path, `https://…`, `arca://…`).
@@ -1402,6 +1528,7 @@ impl Default for LogoSpec {
 impl Default for HeaderFooterStyle {
     fn default() -> Self {
         Self {
+            font_families: Vec::new(),
             left: String::new(),
             center: String::new(),
             right: String::new(),

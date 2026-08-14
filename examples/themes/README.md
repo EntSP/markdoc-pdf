@@ -28,6 +28,23 @@ parts that matter and inherit the rest. The complete knob inventory is the
 [Style reference](#style-reference) below; the source of truth is
 `markdoc-pdf/src/render/style.rs`.
 
+**Unknown keys are an error.** A misspelled or invented knob fails the
+render with the line number and the list of keys that table accepts:
+
+```
+TOML parse error at line 4, column 1
+  |
+4 | font_familes = ["Source Sans 3"]
+  | ^^^^^^^^^^^^
+unknown field `font_familes`, expected one of `font_size`, `font_weight`,
+`space_before`, `space_after`, `color`, `font_families`
+```
+
+This is deliberate: a silently-ignored key looks exactly like a knob
+that doesn't work, which is a bad afternoon. If an existing style file
+suddenly fails to load, the named key was never doing anything — delete
+it or fix the spelling.
+
 ## Cover pages
 
 Source `.mdoc` documents stay output-agnostic — they don't include a
@@ -117,7 +134,57 @@ renders `Copyright © 2026 by ACME LLC.` for a same-year release, or
 |---|---|---|---|
 | `font_paths` | array of string | `[]` | Extra `.ttf`/`.otf` font files to load before layout; families they expose become referenceable. Loaded once. |
 | `body_font_families` | array of string | `[]` | Body-text family names in fallback order. Empty = bundled Noto Sans + multi-script fallbacks. |
-| `code_font_family` | string | `"Noto Sans Mono"` | Monospace family for code. |
+| `code_font_family` | string | `"Noto Sans Mono"` | Monospace family for code blocks **and inline code**. The bundled Noto mono/sans pair stays behind it as fallback, so glyphs your face lacks still render. |
+
+#### Per-element fonts
+
+You do **not** need `font_paths` for a font that is already installed —
+name the family and it resolves. Use `font_paths` only for fonts you
+ship with the document.
+
+Every element that draws text takes its own `font_families` list, in
+its own table:
+
+| Element | Where the key goes |
+|---|---|
+| Headings | `[heading.h1]` … `[heading.h6]` |
+| Callouts | `[callout_styles.note]`, `.info`, `.warning`, `.caution`, `.danger`, `.success`, `.notice` |
+| List markers / badges | `[list_marker]` |
+| Footnotes | `[footnote]` |
+| Table of contents | `[toc]` |
+| List of figures / tables | `[lof]`, `[lot]` |
+| Header / footer | `[page_decoration.header]`, `[page_decoration.footer]` |
+| Notice banner | `[page_decoration.banner]` |
+| Last-page QR label | `[page_decoration.last_page_qr]` |
+| Text watermark | `[watermark.kind]` (when `type = "text"`) |
+| Cover page | `[coverpage]` |
+
+An **empty or absent** list inherits `body_font_families`, which in
+turn falls back to the bundled Noto set. So you set the document face
+once and override only where you want a contrast:
+
+```toml
+body_font_families = ["Source Serif 4"]      # everything…
+code_font_family    = "JetBrains Mono"
+
+[heading.h1]
+font_families = ["Source Sans 3"]            # …except h1
+
+[page_decoration.footer]
+font_families = ["Source Sans 3"]            # …and the footer
+```
+
+Two things to know:
+
+- A per-element list **replaces** the inherited one rather than
+  extending it. A Latin-only face will therefore drop the multi-script
+  fallbacks for that element — if the document isn't Latin-only, list
+  the scripts you need explicitly (see the multi-script notes in the
+  main README).
+- If you point `font_paths` at a single file, you get only that weight.
+  Supplying just `Regular` means headings lose their real bold and get
+  a synthesised one; list every weight you rely on, or use a family
+  that's installed system-wide.
 
 ### Body text & paragraphs
 

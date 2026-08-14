@@ -1,0 +1,105 @@
+---
+title: Different fonts across one document
+authors: [markdoc-pdf]
+---
+
+# Per-element fonts
+
+Every element that draws text takes its own `font_families` list in the
+style file. This page sets a different face for each one so you can see
+where the boundaries fall — render it and compare against
+`fonts.style.toml` side by side.
+
+The document body you are reading now is the **serif** face from
+`body_font_families`. Everything that doesn't override it inherits it,
+which is why footnotes and table cells match this paragraph while the
+heading above is visibly sans.
+
+## What overrides what
+
+Resolution is a two-step chain, and an empty list means "inherit":
+
+1. An element's own `font_families`, if it sets one.
+2. Otherwise `body_font_families`.
+3. Otherwise the bundled Noto set.
+
+So you pick the document face once and override only where you want a
+contrast. Setting no font at all anywhere is still valid — the chain
+just bottoms out at the defaults.
+
+### Headings step down, and keep the sans face
+
+This h3 uses the same sans family as the h1 and h2 above it, because
+`[heading.h1]` through `[heading.h3]` all name it. `h4`–`h6` in this
+style deliberately do *not*, so they inherit the serif body face — a
+visible demonstration of inheritance rather than an oversight.
+
+#### An h4 falls back to the body face
+
+Compare this heading with the h3 above it. Same document, same style
+file, different font, because this level names none.
+
+## Code keeps its own family
+
+Inline code such as `--style examples/fonts.style.toml` and fenced
+blocks both follow `code_font_family`:
+
+```toml
+body_font_families = ["Liberation Serif", "DejaVu Serif"]
+code_font_family   = "Liberation Mono"
+```
+
+Both are the monospace face — inline and block code share one setting
+rather than two.
+
+## Callouts carry a font per kind
+
+Each callout kind has its own entry, so a warning can look different
+from a note if your house style calls for it.
+
+{% callout type="note" %}
+This note uses the sans face set on `[callout_styles.note]`.
+{% /callout %}
+
+{% callout type="warning" %}
+This warning names no font, so it inherits the serif body face. Kinds
+are independent of each other.
+{% /callout %}
+
+## Everything else
+
+Lists, footnotes and tables inherit the body face here:
+
+- A list item in the body face.
+- Markers themselves are configurable via `[list_marker]`.
+
+| Element | Where the font is set |
+| --- | --- |
+| Headings | `[heading.h1]` … `[heading.h6]` |
+| Code | `code_font_family` |
+| Callouts | `[callout_styles.<kind>]` |
+| Header / footer | `[page_decoration.header]` / `.footer` |
+
+A footnote inherits the body face too.[^1]
+
+[^1]: Set `[footnote] font_families` if you want it to differ.
+
+The running header and footer on every page use the sans face from
+`[page_decoration.header]` and `.footer` — check the top and bottom of
+the page rather than the body text for those.
+
+## Naming fonts
+
+Any family installed on the system can be named directly; `font_paths`
+is only needed for a font you ship alongside the document. Families
+that aren't installed are skipped silently, so listing a fallback after
+your first choice keeps the document rendering anywhere:
+
+```toml
+[heading.h1]
+font_families = ["Liberation Sans", "DejaVu Sans", "Noto Sans"]
+```
+
+That is also why this example uses the Liberation and DejaVu families —
+they ship almost everywhere on Linux, so the contrast survives on a
+machine that has neither of your brand fonts.
